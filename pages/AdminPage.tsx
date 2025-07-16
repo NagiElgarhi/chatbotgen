@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Bot, Knowledge } from '../types';
 import { getBots, createBot, deleteBot, updateBotKnowledge, backupDatabase } from '../services/databaseService';
-import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon, UserIcon, DocumentTextIcon } from '../components/Icons';
+import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon, UserIcon, DocumentTextIcon, PlatformLogoIcon } from '../components/Icons';
 import { colorOptions } from '../utils/colors';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
@@ -13,9 +13,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@5.3.93/build
 // --- Helper Components ---
 const Modal: React.FC<{ children: React.ReactNode; onClose: () => void; title: string }> = ({ children, onClose, title }) => (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-        <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl max-w-2xl w-full mx-auto ring-1 ring-amber-300" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold text-amber-800 mb-6 text-center">{title}</h2>
-            {children}
+        <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto ring-1 ring-amber-300 flex flex-col max-h-[90vh]" 
+            onClick={(e) => e.stopPropagation()}
+        >
+            <h2 className="text-2xl font-bold text-amber-800 p-6 sm:p-8 pb-4 text-center flex-shrink-0 border-b border-amber-200">{title}</h2>
+            <div className="overflow-y-auto wavy-gold-scrollbar p-6 sm:p-8 pt-6">
+                {children}
+            </div>
         </div>
     </div>
 );
@@ -343,7 +348,18 @@ const AdminPage: React.FC = () => {
                         </div>
                         <div className="divide-y divide-amber-100 max-h-[60vh] overflow-y-auto wavy-gold-scrollbar pr-2">
                             {bots.length === 0 ? (
-                                <p className="text-center p-8 text-stone-500">No bots yet. Start by creating a new one!</p>
+                                <div className="text-center p-8">
+                                    <PlatformLogoIcon className="h-24 w-24 mx-auto mb-4 opacity-70" />
+                                    <h3 className="text-2xl font-bold text-stone-800 font-cinzel">No Assistants Forged Yet</h3>
+                                    <p className="mt-2 mb-6 text-stone-600 max-w-md mx-auto">It looks like your forge is quiet. It's time to create your first intelligent assistant!</p>
+                                    <button
+                                        onClick={() => setIsCreateModalOpen(true)}
+                                        className="flex items-center justify-center gap-2 px-6 py-3 mx-auto text-lg font-bold rounded-full transition-all transform hover:scale-105 bg-wavy-gold-button text-black shadow-lg"
+                                    >
+                                        <PlusIcon />
+                                        <span>Forge a New Bot</span>
+                                    </button>
+                                </div>
                             ) : (
                                 (bots as Bot[]).map(bot => (
                                     <div key={bot.id} className="grid grid-cols-12 items-center p-4 hover:bg-amber-50/50 transition-colors">
