@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lord of the Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fdfaf5;
+        }
+        .font-cinzel {
+            font-family: 'Cinzel Decorative', cursive;
+        }
+        .z-special {
+            font-size: 200%;
+            display: inline-block;
+            vertical-align: -0.3em; /* Fine-tune vertical alignment */
+            margin: 0 -0.05em; /* Adjust spacing around the letter */
+            background: linear-gradient(45deg, #2c1e02, #8b6d1e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-fill-color: transparent;
+        }
+        .pulse {
+            animation: pulse-animation 1.5s infinite;
+        }
+        @keyframes pulse-animation {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .pulse-thinking {
+             animation: pulse-thinking-animation 1.5s infinite;
+        }
+        @keyframes pulse-thinking-animation {
+            0% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7); } /* Amber 600 */
+            70% { box-shadow: 0 0 0 20px rgba(217, 119, 6, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+        }
+        
+        @keyframes wavy-gold {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .bg-main-container {
+            background: linear-gradient(145deg, #f3e5b0, #c5a32c);
+        }
+
+        .bg-wavy-gold-button {
+            background: linear-gradient(270deg, #c5a32c, #f9d976, #b48a02, #f3e5b0, #c5a32c);
+            background-size: 400% 400%;
+            animation: wavy-gold 4s ease-in-out infinite;
+        }
+        
+        .bg-wavy-gold-button-reversed {
+            background: linear-gradient(90deg, #c5a32c, #f9d976, #b48a02, #f3e5b0, #c5a32c);
+            background-size: 400% 400%;
+            animation: wavy-gold 4s ease-in-out infinite;
+        }
+
+        .text-shadow {
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.4);
+        }
+        .bg-simple-gold-gradient {
+            background: linear-gradient(145deg, #f3e5b0, #d6b56a);
+        }
+        
+        /* Custom Scrollbar Styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(243, 229, 176, 0.2); /* Light amber background */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(145deg, #f3e5b0, #c5a32c);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(145deg, #f9d976, #b48a02);
+        }
+
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "pdfjs-dist": "https://esm.sh/pdfjs-dist@^5.3.93",
+    "mammoth": "https://esm.sh/mammoth@^1.9.1",
+    "@google/genai": "https://esm.sh/@google/genai@^1.9.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="text-stone-800">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

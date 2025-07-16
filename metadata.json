@@ -1,0 +1,8 @@
+{
+  "name": "Lord of the Chatbot",
+  "description": "A powerful, multi-tenant platform to create, manage, and embed your own AI-powered chatbots. Each bot has its own knowledge base and can be deployed on any website.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
