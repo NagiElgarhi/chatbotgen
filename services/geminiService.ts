@@ -1,8 +1,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Knowledge, Message } from '../types';
 
-// Initialize the Gemini AI client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+
+const getAiClient = (): GoogleGenAI => {
+    if (ai) {
+        // Here we could add logic to re-init if the key changes, but for now this is fine.
+        return ai;
+    }
+
+    const apiKey = localStorage.getItem('google_api_key');
+    if (!apiKey) {
+        throw new Error("API Key not found in local storage. Please set it on the Admin page.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+    return ai;
+}
+
 
 // --- Knowledge Base Retrieval ---
 const findRelevantChunks = (query: string, knowledgeBase: Knowledge, count = 3): string[] => {
@@ -61,6 +75,7 @@ interface GeminiResponse {
 
 export const generateResponse = async (query: string, chatHistory: Message[], knowledge: Knowledge): Promise<GeminiResponse> => {
     try {
+        const geminiClient = getAiClient();
         const relevantChunks = findRelevantChunks(query, knowledge);
 
         const context = relevantChunks.length > 0
@@ -77,7 +92,7 @@ export const generateResponse = async (query: string, chatHistory: Message[], kn
         
         const prompt = `${context}\n\nRecent conversation history:\n${recentHistory}\n\nCurrent user question: "${query}"`;
 
-        const response = await ai.models.generateContent({
+        const response = await geminiClient.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
@@ -104,7 +119,10 @@ export const generateResponse = async (query: string, chatHistory: Message[], kn
 
     } catch (e) {
         console.error("Gemini Service Error:", e);
-        const errorMessage = "Sorry, I'm having trouble connecting to the smart assistant right now. Please try again later.";
+        const errorMessage = (e as Error).message.includes("API Key not found")
+            ? "The Google AI API Key is not set. Please configure it in the Admin panel."
+            : "Sorry, I'm having trouble connecting to the smart assistant right now. Please try again later.";
+        
         // Return a fallback response
         return {
             answer: [errorMessage],

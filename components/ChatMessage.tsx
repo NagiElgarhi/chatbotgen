@@ -4,10 +4,10 @@ import { UserIcon, BotIcon, ClipboardIcon, CheckIcon, ChevronLeftIcon, ChevronRi
 
 interface ChatMessageProps {
   message: Message;
-  onSuggestedQuestionClick?: (question: string) => void;
+  onSendMessage?: (question: string) => void;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSuggestedQuestionClick }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSendMessage }) => {
   const isUser = message.speaker === 'user';
   const [copied, setCopied] = useState(false);
   const [currentPart, setCurrentPart] = useState(0);
@@ -91,7 +91,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSuggestedQu
                         {message.suggestedQuestions.map((q, i) => (
                             <button
                                 key={i}
-                                onClick={() => onSuggestedQuestionClick?.(q)}
+                                onClick={() => onSendMessage?.(q)}
                                 className="px-3 py-1.5 text-sm bg-amber-600/10 text-amber-900 rounded-full hover:bg-amber-600/20 transition-colors"
                             >
                                 {q}

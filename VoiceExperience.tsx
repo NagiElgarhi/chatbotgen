@@ -39,7 +39,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
                     <ChatMessage 
                         key={index} 
                         message={message}
-                        onSuggestedQuestionClick={sendTextMessage}
+                        onSendMessage={sendTextMessage}
                     />
                 ))}
                 {status === Status.ERROR && error && (

@@ -234,13 +234,15 @@ export const useVoiceAssistant = () => {
 
     const sendTextMessage = useCallback((text: string) => {
         if (isMounted.current) {
-            const userMessage: Message = { speaker: 'user', text: text };
-            setTranscript(prev => [...prev, userMessage]);
-            processTranscript(text);
+            // Immediately stop any ongoing speech or recognition for better responsiveness
             window.speechSynthesis.cancel();
             if (recognitionRef.current) {
                 recognitionRef.current.abort();
             }
+
+            const userMessage: Message = { speaker: 'user', text: text };
+            setTranscript(prev => [...prev, userMessage]);
+            processTranscript(text);
         }
     }, [processTranscript]);
     

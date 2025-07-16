@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { Bot, Knowledge } from '../types';
 import { getBots, createBot, deleteBot, updateBotKnowledge, backupDatabase } from '../services/databaseService';
@@ -6,6 +5,7 @@ import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, Ch
 import { colorOptions } from '../utils/colors';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
+import { ApiKeyManager } from '../components/ApiKeyManager';
 
 // @ts-ignore
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@5.3.93/build/pdf.worker.mjs`;
@@ -327,6 +327,10 @@ const AdminPage: React.FC = () => {
                     </button>
                 </div>
             </header>
+            
+            <div className="mb-8">
+                <ApiKeyManager />
+            </div>
 
             <div className="bg-white shadow-lg rounded-2xl overflow-hidden ring-1 ring-amber-200">
                 <div className="overflow-x-auto">
