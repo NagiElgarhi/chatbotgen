@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Bot, Knowledge } from '../types';
-import { getBots, createBot, deleteBot, updateBotKnowledge, backupDatabase } from '../services/databaseService';
+import { getBots, createBot, deleteBot, updateBotKnowledge, backupDatabase, getBot } from '../services/databaseService';
 import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon, UserIcon, DocumentTextIcon, PlatformLogoIcon } from '../components/Icons';
 import { colorOptions } from '../utils/colors';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { ApiKeyManager } from '../components/ApiKeyManager';
+import JSZip from 'jszip';
+import saveAs from 'file-saver';
 
 // @ts-ignore
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@5.3.93/build/pdf.worker.mjs`;
@@ -184,6 +186,7 @@ const AdminPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isBackingUp, setIsBackingUp] = useState(false);
+    const [downloadingBotId, setDownloadingBotId] = useState<string | null>(null);
     
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -288,6 +291,148 @@ const AdminPage: React.FC = () => {
         }
     };
 
+    const handleDownloadBot = async (botId: string) => {
+        setDownloadingBotId(botId);
+        try {
+            const bot = await getBot(botId);
+            if (!bot) throw new Error("Bot not found");
+
+            const zip = new JSZip();
+
+            // --- Helper to fetch file content ---
+            const fetchAsText = (path: string) => fetch(path).then(res => {
+                if (!res.ok) throw new Error(`Failed to fetch ${path}: ${res.statusText}`);
+                return res.text();
+            });
+
+            // --- Define file templates for the standalone bot ---
+            const readmeContent = `# Standalone AI Chatbot
+
+This folder contains your generated standalone AI chatbot, "${bot.name}", powered by Google Gemini.
+
+## 🚀 Quick Start
+
+1.  **Add your API Key:**
+    *   Open the \`config.js\` file in a text editor.
+    *   Paste your Google AI API Key into the \`API_KEY\` constant.
+    *   You can get a key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+    *   **IMPORTANT:** Without a valid API key, the chatbot will not work.
+
+2.  **Run Locally:**
+    *   This project uses modern JavaScript modules (ESM), so you need a simple local web server to run it. You cannot just open \`index.html\` from the filesystem.
+    *   If you have Python 3, navigate to this folder in your terminal and run: \`python -m http.server\`
+    *   Then, open your browser and go to \`http://localhost:8000\`.
+
+3.  **Deploy:**
+    *   To deploy this chatbot, simply upload all the files and folders from this zip to any static web hosting service (like Vercel, Netlify, GitHub Pages, etc.).
+
+## ⚙️ Configuration
+
+All of your bot's settings (name, welcome message, knowledge base, colors, etc.) are stored in \`bot.json\`. You can edit this file directly to make changes.`;
+            
+            const configJsContent = `// IMPORTANT: Paste your Google AI API Key here
+// You can get one from https://aistudio.google.com/app/apikey
+export const API_KEY = "PASTE_YOUR_GOOGLE_AI_API_KEY_HERE";
+`;
+
+            const standaloneIndexTsx = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import BotClient from './BotClient';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <BotClient />
+  </React.StrictMode>
+);`;
+            
+            // Fetch and modify files
+            const originalIndexHtml = await fetchAsText('./index.html');
+            const standaloneIndexHtml = originalIndexHtml.replace(/<title>.*<\/title>/, `<title>${bot.name}</title>`);
+            
+            const originalBotClient = await fetchAsText('./BotClient.tsx');
+            const standaloneBotClient = originalBotClient
+                .replace(`import { getBot } from './services/databaseService';`, "")
+                .replace(/interface BotClientProps[^}]+}/s, "")
+                .replace(`const BotClient: React.FC<BotClientProps> = ({ botId }) => {`, `const BotClient: React.FC = () => {`)
+                .replace(/useEffect\(\s*()?\s*=>\s*{[^}]*fetchBotData\(\);[^}]*},\s*\[botId\]\s*\);/s, `useEffect(() => {
+        const fetchBotData = async () => {
+            setView('loading');
+            try {
+                const response = await fetch('./bot.json');
+                if (!response.ok) throw new Error('Could not load bot.json. Make sure the file is in the same directory.');
+                const fetchedBot = await response.json();
+                setBot(fetchedBot);
+                setView('bot');
+            } catch (err: any) {
+                console.error("Failed to fetch bot data:", err);
+                setError("Could not load bot data. Please check bot.json and ensure the server is running.");
+                setView('error');
+            }
+        };
+
+        fetchBotData();
+    }, []);`);
+
+            const originalGeminiService = await fetchAsText('./services/geminiService.ts');
+            const standaloneGeminiService = originalGeminiService
+                .replace(`import { GoogleGenAI, Type } from "@google/genai";`, `import { GoogleGenAI, Type } from "@google/genai";\nimport { API_KEY } from '../config';`)
+                .replace(/const getAiClient = \(\): GoogleGenAI => {[^}]+};/s, `const getAiClient = (): GoogleGenAI => {
+    if (ai) {
+        return ai;
+    }
+
+    if (!API_KEY || API_KEY.includes("PASTE_YOUR")) {
+         const errorMsg = "Google AI API Key not found. Please add it to config.js.";
+         console.error(errorMsg);
+         throw new Error(errorMsg);
+    }
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+    return ai;
+};`);
+                
+            // List of static files to include
+            const filesToZip = {
+                'bot.json': JSON.stringify(bot, null, 2),
+                'config.js': configJsContent,
+                'README.md': readmeContent,
+                'index.html': standaloneIndexHtml,
+                'index.tsx': standaloneIndexTsx,
+                'BotClient.tsx': standaloneBotClient,
+                'metadata.json': fetchAsText('./metadata.json'),
+                'types.ts': fetchAsText('./types.ts'),
+                'VoiceExperience.tsx': fetchAsText('./VoiceExperience.tsx'),
+                'hooks/useVoiceAssistant.ts': fetchAsText('./hooks/useVoiceAssistant.ts'),
+                'services/geminiService.ts': standaloneGeminiService,
+                'components/CallControlButton.tsx': fetchAsText('./components/CallControlButton.tsx'),
+                'components/ChatInput.tsx': fetchAsText('./components/ChatInput.tsx'),
+                'components/ChatMessage.tsx': fetchAsText('./components/ChatMessage.tsx'),
+                'components/Icons.tsx': fetchAsText('./components/Icons.tsx'),
+                'components/StatusIndicator.tsx': fetchAsText('./components/StatusIndicator.tsx'),
+            };
+
+            for (const [path, contentPromise] of Object.entries(filesToZip)) {
+                const content = await contentPromise;
+                zip.file(path, content);
+            }
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            saveAs(blob, `${bot.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.zip`);
+
+        } catch (error) {
+            console.error("Failed to download bot:", error);
+            alert(`Could not download bot. See console for details: ${(error as Error).message}`);
+        } finally {
+            setDownloadingBotId(null);
+        }
+    };
+
+
     if (isLoading && view === 'list') {
         return <div className="flex items-center justify-center min-h-screen bg-stone-50"><SpinnerIcon className="w-16 h-16 text-amber-700"/></div>;
     }
@@ -341,10 +486,10 @@ const AdminPage: React.FC = () => {
                 <div className="overflow-x-auto">
                     <div className="min-w-[700px]">
                         <div className="grid grid-cols-12 text-sm font-bold text-amber-900 bg-amber-50 p-4 border-b border-amber-200 uppercase tracking-wider">
-                            <div className="col-span-4">Bot Name</div>
+                            <div className="col-span-3">Bot Name</div>
                             <div className="col-span-2">Admin Pass</div>
                             <div className="col-span-3">Last Updated</div>
-                            <div className="col-span-3 text-center">Actions</div>
+                            <div className="col-span-4 text-center">Actions</div>
                         </div>
                         <div className="divide-y divide-amber-100 max-h-[60vh] overflow-y-auto wavy-gold-scrollbar pr-2">
                             {bots.length === 0 ? (
@@ -363,12 +508,15 @@ const AdminPage: React.FC = () => {
                             ) : (
                                 (bots as Bot[]).map(bot => (
                                     <div key={bot.id} className="grid grid-cols-12 items-center p-4 hover:bg-amber-50/50 transition-colors">
-                                        <p className="col-span-4 font-semibold text-stone-800 text-lg truncate pr-2" title={bot.name}>{bot.name}</p>
+                                        <p className="col-span-3 font-semibold text-stone-800 text-lg truncate pr-2" title={bot.name}>{bot.name}</p>
                                         <p className="col-span-2 font-mono text-sm text-blue-700 bg-blue-100 px-2 py-1 rounded-md inline-block">{bot.admin_pass}</p>
                                         <p className="col-span-3 text-sm text-stone-600">{new Date(bot.updated_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                                        <div className="col-span-3 flex justify-center items-center gap-1 sm:gap-2">
+                                        <div className="col-span-4 flex justify-center items-center gap-1 sm:gap-2">
                                             <button onClick={() => handleManageKnowledge(bot)} className="px-3 py-1.5 text-xs sm:text-sm rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 transition">Manage Knowledge</button>
                                             <button onClick={() => handleShowEmbed(bot)} className="p-2 rounded-full hover:bg-blue-100 text-blue-700 transition" aria-label="Embed Code"><CodeIcon className="w-5 h-5"/></button>
+                                            <button onClick={() => handleDownloadBot(bot.id)} disabled={downloadingBotId === bot.id} className="p-2 rounded-full hover:bg-green-100 text-green-700 transition disabled:opacity-50 disabled:cursor-wait" aria-label="Download Bot">
+                                                {downloadingBotId === bot.id ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : <DownloadIcon className="w-5 h-5"/>}
+                                            </button>
                                             <button onClick={() => handleDeleteBot(bot.id)} className="p-2 rounded-full hover:bg-red-100 text-red-700 transition" aria-label="Delete Bot"><TrashIcon className="w-5 h-5"/></button>
                                         </div>
                                     </div>
