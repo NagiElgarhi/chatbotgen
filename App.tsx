@@ -2,11 +2,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import BotClient from './BotClient';
 import HomePage from './pages/HomePage';
-import ProductsPage from './pages/ProductsPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import AdminPage from './pages/AdminPage';
-import CardDataAdminPage from './pages/CardDataAdminPage';
+import CreationsPage from './pages/CreationsPage';
+import ProductsPage from './pages/ProductsPage';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 
@@ -22,16 +22,12 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const botId = params.get('botId');
     const nagiPass = params.get('nagi');
-    const cardPass = params.get('card');
-
+    
     if (botId) {
         return <BotClient botId={botId} />;
     }
-    if (nagiPass === 'Nagi') {
+    if (nagiPass === '2027') {
         return <AdminPage />;
-    }
-    if (cardPass === 'data') {
-        return <CardDataAdminPage />;
     }
 
     // --- State and handlers for public-facing SPA routing ---
@@ -79,6 +75,8 @@ const App: React.FC = () => {
     // Determine which component to render based on state
     const renderPage = () => {
         switch (currentPage) {
+            case 'creations':
+                return <CreationsPage />;
             case 'products':
                 return <ProductsPage />;
             case 'about':

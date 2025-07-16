@@ -4,7 +4,9 @@ import { XIcon, SpinnerIcon } from './components/Icons';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
 import { CallControlButton } from './components/CallControlButton';
 import { getBot } from './services/databaseService';
-import { Bot } from './types';
+import { Bot, Status } from './types';
+import { ChatInput } from './components/ChatInput';
+
 
 interface BotClientProps {
     botId: string;
@@ -67,7 +69,7 @@ const BotClient: React.FC<BotClientProps> = ({ botId }) => {
 
 const ChatInterface: React.FC<{ bot: Bot }> = ({ bot }) => {
     const [isChatOpen, setIsChatOpen] = useState(false);
-    const { status, transcript, startSession, stopSession, isSessionActive, sendSuggestedQuestion, error: assistantError } = useVoiceAssistant();
+    const { status, transcript, startSession, stopSession, isSessionActive, sendTextMessage, error: assistantError } = useVoiceAssistant();
 
     const handleStartSession = useCallback(() => {
         const welcomeMessage = bot.welcome_message || 'Welcome, how can I help you today?';
@@ -87,16 +89,26 @@ const ChatInterface: React.FC<{ bot: Bot }> = ({ bot }) => {
             stopSession();
         }
     };
+
+    const fabBaseClassName = 'fixed bottom-6 right-6 z-40 w-20 h-20 rounded-full shadow-2xl flex items-center justify-center transform hover:scale-110 transition-all duration-300';
+    const fabStyle: React.CSSProperties = {};
+    let fabAnimationClass = 'bg-wavy-gold-button';
+
+    if (bot.wavy_color) {
+        fabStyle.background = `linear-gradient(270deg, ${bot.wavy_color})`;
+        fabAnimationClass = 'wavy-animation';
+    }
     
     return (
         <>
             {/* Floating Action Button */}
             <button
                 onClick={handleOpenChat}
-                className={`fixed bottom-6 right-6 z-40 w-20 h-20 rounded-full bg-wavy-gold-button shadow-2xl flex items-center justify-center transform hover:scale-110 transition-all duration-300 ${isChatOpen ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'}`}
+                style={fabStyle}
+                className={`${fabBaseClassName} ${fabAnimationClass} ${isChatOpen ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'}`}
                 aria-label="Open Chat"
             >
-                <img src="/logo.png" alt="Bot Logo" className="w-16 h-16 p-1 rounded-full object-cover" />
+                <img src={bot.image_base64 || "logo.png"} alt="Bot Logo" className="w-16 h-16 p-1 rounded-full object-cover" />
             </button>
 
             {/* Chat Window */}
@@ -126,12 +138,19 @@ const ChatInterface: React.FC<{ bot: Bot }> = ({ bot }) => {
                 <div className="flex-1 flex flex-col overflow-hidden">
                     <VoiceExperience 
                         botName={bot.name}
+                        botImage={bot.image_base64}
                         status={status}
                         transcript={transcript}
                         error={assistantError}
                         isSessionActive={isSessionActive}
-                        sendSuggestedQuestion={sendSuggestedQuestion}
+                        sendTextMessage={sendTextMessage}
                      />
+                    {isSessionActive && (
+                        <ChatInput 
+                            onSendMessage={sendTextMessage} 
+                            disabled={status === Status.THINKING || status === Status.SPEAKING}
+                        />
+                    )}
                 </div>
             </div>
         </>

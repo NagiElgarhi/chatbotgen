@@ -4,15 +4,16 @@ import { ChatMessage } from './components/ChatMessage';
 
 interface VoiceExperienceProps {
     botName: string;
+    botImage?: string | null;
     status: Status;
     transcript: Message[];
     error: string | null;
     isSessionActive: boolean;
-    sendSuggestedQuestion: (question: string) => void;
+    sendTextMessage: (question: string) => void;
 }
 
 export const VoiceExperience: React.FC<VoiceExperienceProps> = ({ 
-    botName, status, transcript, error, isSessionActive, sendSuggestedQuestion 
+    botName, botImage, status, transcript, error, isSessionActive, sendTextMessage 
 }) => {
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -26,19 +27,19 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
     return (
         <div className="flex flex-col h-full">
-            <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
+            <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 wavy-gold-scrollbar">
                 {showWelcomeMessage && (
                      <div className="flex flex-col items-center justify-center h-full text-center text-amber-900/80 px-4">
-                         <img src="/logo.png?v=3" alt="Bot Logo" className="w-32 h-32 mb-6 rounded-full object-cover border-4 border-white/50 shadow-lg opacity-90" />
+                         <img src={botImage || "logo.png?v=3"} alt="Bot Logo" className="w-32 h-32 mb-6 rounded-full object-cover border-4 border-white/50 shadow-lg opacity-90" />
                         <h2 className="text-2xl font-bold font-cinzel">{botName}</h2>
-                        <p className="mt-2 max-w-md">Press the "Start Call" button in the top bar to talk to the voice assistant.</p>
+                        <p className="mt-2 max-w-md">Press the "Start" button to talk to the voice assistant, or type a message once the session begins.</p>
                      </div>
                 )}
                 {transcript.map((message, index) => (
                     <ChatMessage 
                         key={index} 
                         message={message}
-                        onSuggestedQuestionClick={sendSuggestedQuestion}
+                        onSuggestedQuestionClick={sendTextMessage}
                     />
                 ))}
                 {status === Status.ERROR && error && (

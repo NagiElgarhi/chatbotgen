@@ -1,7 +1,9 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Bot, Knowledge } from '../types';
 import { getBots, createBot, deleteBot, updateBotKnowledge, backupDatabase } from '../services/databaseService';
-import { PlusIcon, TrashIcon, DocumentTextIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon } from '../components/Icons';
+import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon, UserIcon, DocumentTextIcon } from '../components/Icons';
+import { colorOptions } from '../utils/colors';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 
@@ -179,6 +181,7 @@ const AdminPage: React.FC = () => {
     const [isBackingUp, setIsBackingUp] = useState(false);
     
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [isEmbedModalOpen, setIsEmbedModalOpen] = useState(false);
     
     const fetchBotsList = useCallback(async () => {
@@ -199,6 +202,22 @@ const AdminPage: React.FC = () => {
              fetchBotsList();
         }
     }, [view, fetchBotsList]);
+    
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
+    const handleCloseCreateModal = () => {
+        setIsCreateModalOpen(false);
+        setImagePreview(null);
+    };
 
     const handleCreateBot = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -206,6 +225,8 @@ const AdminPage: React.FC = () => {
         const name = formData.get('botName') as string;
         const welcome_message = formData.get('welcomeMessage') as string;
         const initialKnowledgeText = formData.get('initialKnowledge') as string;
+        const image_base64 = imagePreview;
+        const wavy_color = formData.get('wavyColor') as string;
 
         if (!name || !welcome_message) {
             alert('Please fill in the bot name and welcome message.');
@@ -221,8 +242,8 @@ const AdminPage: React.FC = () => {
         }
         
         try {
-            await createBot({ name, welcome_message, knowledge: initialKnowledge });
-            setIsCreateModalOpen(false);
+            await createBot({ name, welcome_message, knowledge: initialKnowledge, image_base64, wavy_color });
+            handleCloseCreateModal();
             fetchBotsList();
         } catch (err) {
             alert(`Failed to create bot: ${(err as Error).message}`);
@@ -262,7 +283,7 @@ const AdminPage: React.FC = () => {
         }
     };
 
-    if (isLoading) {
+    if (isLoading && view === 'list') {
         return <div className="flex items-center justify-center min-h-screen bg-stone-50"><SpinnerIcon className="w-16 h-16 text-amber-700"/></div>;
     }
 
@@ -316,7 +337,7 @@ const AdminPage: React.FC = () => {
                             <div className="col-span-3">Last Updated</div>
                             <div className="col-span-3 text-center">Actions</div>
                         </div>
-                        <div className="divide-y divide-amber-100">
+                        <div className="divide-y divide-amber-100 max-h-[60vh] overflow-y-auto wavy-gold-scrollbar pr-2">
                             {bots.length === 0 ? (
                                 <p className="text-center p-8 text-stone-500">No bots yet. Start by creating a new one!</p>
                             ) : (
@@ -339,11 +360,32 @@ const AdminPage: React.FC = () => {
             </div>
             
             {isCreateModalOpen && (
-                <Modal onClose={() => setIsCreateModalOpen(false)} title="Create New Bot">
+                <Modal onClose={handleCloseCreateModal} title="Create New Bot">
                     <form onSubmit={handleCreateBot} className="space-y-6">
                         <div>
                             <label htmlFor="botName" className="block text-lg font-medium text-stone-700 mb-2">Bot Name</label>
                             <input type="text" name="botName" id="botName" required className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"/>
+                        </div>
+                         <div>
+                            <label htmlFor="botImage" className="block text-lg font-medium text-stone-700 mb-2">Bot Image (for Icon & Welcome)</label>
+                            <div className="mt-2 flex items-center gap-4">
+                                {imagePreview ? (
+                                    <img src={imagePreview} alt="Bot preview" className="w-16 h-16 rounded-full object-cover border-2 border-amber-300" />
+                                ) : (
+                                    <div className="w-16 h-16 rounded-full bg-stone-200 flex items-center justify-center text-stone-500">
+                                        <UserIcon className="w-8 h-8"/>
+                                    </div>
+                                )}
+                                <input type="file" name="botImage" id="botImage" accept="image/png, image/jpeg, image/gif" onChange={handleImageChange} className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"/>
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="wavyColor" className="block text-lg font-medium text-stone-700 mb-2">Bot Color Theme</label>
+                            <select name="wavyColor" id="wavyColor" className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors">
+                                {colorOptions.map(opt => (
+                                    <option key={opt.name} value={opt.value}>{opt.name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div>
                             <label htmlFor="welcomeMessage" className="block text-lg font-medium text-stone-700 mb-2">Welcome Message</label>

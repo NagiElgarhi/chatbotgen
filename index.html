@@ -44,10 +44,15 @@
             100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
         }
         
-        @keyframes wavy-gold {
+        @keyframes wavy-background {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
+        }
+        
+        .wavy-animation {
+            background-size: 400% 400%;
+            animation: wavy-background 4s ease-in-out infinite;
         }
         
         .bg-main-container {
@@ -57,13 +62,13 @@
         .bg-wavy-gold-button {
             background: linear-gradient(270deg, #c5a32c, #f9d976, #b48a02, #f3e5b0, #c5a32c);
             background-size: 400% 400%;
-            animation: wavy-gold 4s ease-in-out infinite;
+            animation: wavy-background 4s ease-in-out infinite;
         }
         
         .bg-wavy-gold-button-reversed {
             background: linear-gradient(90deg, #c5a32c, #f9d976, #b48a02, #f3e5b0, #c5a32c);
             background-size: 400% 400%;
-            animation: wavy-gold 4s ease-in-out infinite;
+            animation: wavy-background 4s ease-in-out infinite;
         }
 
         .text-shadow {
@@ -88,6 +93,22 @@
         ::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(145deg, #f9d976, #b48a02);
         }
+        
+        /* Wavy Gold Scrollbar */
+        .wavy-gold-scrollbar::-webkit-scrollbar {
+            width: 12px;
+        }
+        .wavy-gold-scrollbar::-webkit-scrollbar-track {
+            background: rgba(243, 229, 176, 0.2);
+            border-radius: 10px;
+        }
+        .wavy-gold-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(270deg, #c5a32c, #f9d976, #b48a02, #f3e5b0, #c5a32c);
+            background-size: 400% 400%;
+            animation: wavy-background 4s ease-in-out infinite;
+            border-radius: 10px;
+            border: 2px solid #fdfaf5;
+        }
 
     </style>
 <script type="importmap">
@@ -106,6 +127,7 @@
 </head>
 <body class="text-stone-800">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="index.tsx"></script>
+<script type="module" src="/index.tsx"></script>
 </body>
 </html>

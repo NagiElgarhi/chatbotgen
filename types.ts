@@ -31,14 +31,16 @@ export interface Bot {
   created_at: string;
   updated_at: string;
   admin_pass: string;
+  image_base64?: string | null;
+  wavy_color?: string | null;
 }
 
 export interface Product {
-    id: number;
-    name: string;
-    product_url: string;
-    details: string;
-    company_name: string;
-    company_url: string;
-    created_at: string;
+  id: number;
+  name: string;
+  product_url: string;
+  details: string;
+  company_name: string;
+  company_url: string;
+  created_at: string;
 }

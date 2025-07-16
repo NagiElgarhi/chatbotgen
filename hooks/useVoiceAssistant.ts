@@ -232,15 +232,17 @@ export const useVoiceAssistant = () => {
 
 
 
-    const sendSuggestedQuestion = useCallback((question: string) => {
+    const sendTextMessage = useCallback((text: string) => {
         if (isMounted.current) {
-            const userMessage: Message = { speaker: 'user', text: question };
+            const userMessage: Message = { speaker: 'user', text: text };
             setTranscript(prev => [...prev, userMessage]);
-            processTranscript(question);
+            processTranscript(text);
             window.speechSynthesis.cancel();
-            if (recognitionRef.current) recognitionRef.current.abort();
+            if (recognitionRef.current) {
+                recognitionRef.current.abort();
+            }
         }
     }, [processTranscript]);
     
-    return { status, transcript, error, startSession, stopSession, isSessionActive, sendSuggestedQuestion };
+    return { status, transcript, error, startSession, stopSession, isSessionActive, sendTextMessage };
 };

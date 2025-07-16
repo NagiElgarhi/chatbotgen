@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 interface NavbarProps {
@@ -44,12 +45,13 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, currentPage }) => {
         <nav className="sticky top-0 bg-white/80 backdrop-blur-md shadow-md z-30">
             <div className="container mx-auto px-4">
                 <div className="flex justify-between items-center py-4">
-                    <a href="?page=home" onClick={handleTitleClick} className="text-2xl font-cinzel font-bold text-amber-900 cursor-pointer">
-                        Lord <span className="text-xl">of the</span> Chatbot
+                    <a href="?page=home" onClick={handleTitleClick} className="text-2xl font-cinzel font-bold cursor-pointer">
+                        <span className="text-black">Lord</span> <span className="bg-wavy-gold-button bg-clip-text text-transparent"><span className="text-xl">of the</span> Chatbot</span>
                     </a>
                     <div className="flex items-center gap-6">
                         <NavLink page="home" currentPage={currentPage} onNavigate={onNavigate}>Home</NavLink>
-                        <NavLink page="products" currentPage={currentPage} onNavigate={onNavigate}>Creations</NavLink>
+                        <NavLink page="creations" currentPage={currentPage} onNavigate={onNavigate}>Creations</NavLink>
+                        <NavLink page="products" currentPage={currentPage} onNavigate={onNavigate}>Products</NavLink>
                         <NavLink page="about" currentPage={currentPage} onNavigate={onNavigate}>About Us</NavLink>
                         <NavLink page="contact" currentPage={currentPage} onNavigate={onNavigate}>Contact Us</NavLink>
                     </div>

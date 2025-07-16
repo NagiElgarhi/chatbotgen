@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 interface HomePageProps {
@@ -6,11 +7,6 @@ interface HomePageProps {
 }
 
 const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
-
-    const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-        e.preventDefault();
-        onNavigate('products');
-    };
 
     return (
         <div className="text-center py-16 sm:py-24">
@@ -27,13 +23,19 @@ const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                 Whether you need a customer service agent, a product guide, or a specialized knowledge expert, our platform gives you the power to build it with ease.
             </p>
 
-            <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a 
-                   href="?page=products" 
-                   onClick={handleLinkClick}
-                   className="px-10 py-4 bg-wavy-gold-button text-black text-xl font-bold rounded-full hover:shadow-lg transition-all shadow-md transform hover:scale-105 cursor-pointer">
-                    View the Gallery
-                </a>
+            <div className="mt-12 flex flex-col sm:flex-row justify-center items-center gap-6">
+                 <button
+                    onClick={() => onNavigate('creations')}
+                    className="px-8 py-4 bg-wavy-gold-button text-black text-xl font-bold rounded-full hover:shadow-lg transition-all shadow-md transform hover:scale-105"
+                >
+                    View Creations
+                </button>
+                <button
+                    onClick={() => onNavigate('products')}
+                    className="px-8 py-4 bg-wavy-gold-button-reversed text-black text-xl font-bold rounded-full hover:shadow-lg transition-all shadow-md transform hover:scale-105"
+                >
+                    View Products
+                </button>
             </div>
 
             <div className="mt-20 max-w-5xl mx-auto grid md:grid-cols-3 gap-8 text-left">
@@ -52,7 +54,7 @@ const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                  <div className="bg-white/50 p-6 rounded-lg shadow-md border border-amber-200">
                     <h3 className="text-2xl font-bold font-cinzel text-amber-800">Secure Management</h3>
                     <p className="mt-2 text-stone-600">
-                        Control all your bots and product listings from secure, password-protected admin panels. Manage your digital assets with confidence and ease.
+                        Control all your bots from a secure, password-protected admin panel. Manage your AI assistants with confidence and ease.
                     </p>
                 </div>
             </div>

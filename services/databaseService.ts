@@ -1,153 +1,147 @@
-import { Bot, Knowledge, Product } from './types';
+import { Bot, Knowledge } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001/api'; // This should point to your running backend server
+const DB_NAME = 'LordOfTheChatbotDB';
+const DB_VERSION = 1;
+const BOT_STORE_NAME = 'bots';
 
-const handleResponse = async (response: Response) => {
-    if (response.ok) {
-        // Handle 204 No Content for delete operations
-        if (response.status === 204) {
-            return;
-        }
-        return response.json();
-    } else {
-        const errorBody = await response.text();
-        const errorMessage = `Request failed. The server responded with status ${response.status}. Details: ${errorBody}`;
-        console.error('[Database Service] Error:', errorMessage);
-        throw new Error(errorMessage);
-    }
+// --- DB Helper ---
+const openDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onerror = () => reject(new Error('IndexedDB could not be opened. It might be blocked or unavailable in this browser.'));
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(BOT_STORE_NAME)) {
+                db.createObjectStore(BOT_STORE_NAME, { keyPath: 'id' });
+            }
+        };
+    });
 };
 
-const handleError = (error: any, context: string): never => {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-        const message = `[Database Service] Notice: Could not connect to the backend for ${context}.\n` +
-            `This is expected if the backend server is not running at ${API_BASE_URL}.\n` +
-            `Please ensure the server is running and accessible. Check guide/index.html for instructions.`;
-        console.log(message);
-        throw new Error('Could not connect to the backend server. Is it running?');
-    }
-    console.error(`[Database Service] An unexpected error occurred during ${context}:`, error);
-    throw error; // Re-throw the original error after logging
-};
+// --- Helper Functions ---
+const generateId = () => `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+const generateAdminPass = () => Math.random().toString(36).substr(2, 6).toUpperCase();
 
-
-// --- Bot Management ---
+// --- API Functions for Bots ---
 
 export const getBots = async (): Promise<Omit<Bot, 'knowledge'>[]> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/bots`);
-        return await handleResponse(response);
-    } catch (error) {
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-            const message = `[Database Service] Notice: Could not connect to the backend to get the bot list.\n` +
-                `This is an expected notice if the backend server is not yet running.\n` +
-                `Please follow the instructions in 'guide/index.html' to start the server.\n` +
-                `The admin page will show an empty list for now.`;
-            console.info(message);
-            return [];
-        }
-        console.error('[Database Service] An unexpected error occurred during getBots:', error);
-        throw error;
-    }
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(BOT_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(BOT_STORE_NAME);
+        const request = store.getAll();
+
+        request.onerror = () => reject(new Error('Failed to fetch bots from IndexedDB.'));
+        request.onsuccess = () => {
+            const bots: Bot[] = request.result;
+            const botsWithoutKnowledge = bots.map(({ knowledge, ...rest }) => rest);
+            resolve(botsWithoutKnowledge.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
+        };
+    });
 };
 
-export const getBot = async (id: string): Promise<Bot> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/bots/${id}`);
-        return await handleResponse(response);
-    } catch (error) {
-        return handleError(error, `getBot with id ${id}`);
-    }
+export const getBot = async (id: string): Promise<Bot | null> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(BOT_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(BOT_STORE_NAME);
+        const request = store.get(id);
+
+        request.onerror = () => reject(new Error(`Failed to fetch bot with id: ${id}`));
+        request.onsuccess = () => resolve(request.result || null);
+    });
 };
 
-export const createBot = async (data: { name: string; welcome_message: string; knowledge?: Knowledge }): Promise<Bot> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/bots`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        return await handleResponse(response);
-    } catch (error) {
-        return handleError(error, 'createBot');
-    }
+export const createBot = async (botData: Partial<Bot>): Promise<Bot> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const now = new Date().toISOString();
+        const newBot: Bot = {
+            id: generateId(),
+            admin_pass: generateAdminPass(),
+            name: botData.name || 'New Bot',
+            welcome_message: botData.welcome_message || 'Hello!',
+            knowledge: botData.knowledge || { texts: [], files: [] },
+            created_at: now,
+            updated_at: now,
+            image_base64: botData.image_base64 || null,
+            wavy_color: botData.wavy_color || null,
+        };
+
+        const transaction = db.transaction(BOT_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(BOT_STORE_NAME);
+        store.add(newBot);
+        
+        transaction.oncomplete = () => resolve(newBot);
+        transaction.onerror = () => reject(new Error('Failed to create bot. Transaction failed.'));
+    });
 };
 
 export const deleteBot = async (id: string): Promise<void> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/bots/${id}`, { method: 'DELETE' });
-        await handleResponse(response);
-    } catch (error) {
-        return handleError(error, `deleteBot with id ${id}`);
-    }
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(BOT_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(BOT_STORE_NAME);
+        store.delete(id);
+        
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(new Error('Failed to delete bot. Transaction failed.'));
+    });
 };
 
-export const updateBotKnowledge = async (id: string, knowledge: Knowledge): Promise<void> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/bots/${id}/knowledge`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ knowledge }),
-        });
-        await handleResponse(response);
-    } catch (error) {
-        return handleError(error, `updateBotKnowledge for id ${id}`);
+export const updateBotKnowledge = async (id: string, knowledge: Knowledge): Promise<Bot> => {
+    const db = await openDB();
+    const botToUpdate = await getBot(id);
+    if (!botToUpdate) {
+        throw new Error(`Bot with id ${id} not found.`);
     }
+
+    const updatedBot: Bot = {
+        ...botToUpdate,
+        knowledge,
+        updated_at: new Date().toISOString(),
+    };
+    
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(BOT_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(BOT_STORE_NAME);
+        store.put(updatedBot);
+        
+        transaction.oncomplete = () => resolve(updatedBot);
+        transaction.onerror = () => reject(new Error('Failed to update bot knowledge. Transaction failed.'));
+    });
 };
-
-// --- Product Management ---
-
-export const getProducts = async (): Promise<Product[]> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/products`);
-        return await handleResponse(response);
-    } catch (error) {
-         return handleError(error, 'getProducts');
-    }
-};
-
-export const createProduct = async (productData: Omit<Product, 'id' | 'created_at'>): Promise<Product> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/products`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(productData),
-        });
-        return await handleResponse(response);
-    } catch (error) {
-        return handleError(error, 'createProduct');
-    }
-};
-
-export const deleteProduct = async (id: number): Promise<void> => {
-     try {
-        const response = await fetch(`${API_BASE_URL}/products/${id}`, { method: 'DELETE' });
-        await handleResponse(response);
-    } catch (error) {
-        return handleError(error, `deleteProduct with id ${id}`);
-    }
-};
-
-
-// --- Admin Features ---
 
 export const backupDatabase = async (): Promise<void> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/admin/backup`);
-        if (!response.ok) {
-            throw new Error(`Server responded with status ${response.status}`);
-        }
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        a.download = `bots_backup_${timestamp}.db`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-    } catch (error) {
-         return handleError(error, 'backupDatabase');
-    }
+    const db = await openDB();
+    const transaction = db.transaction(BOT_STORE_NAME, 'readonly');
+    const store = transaction.objectStore(BOT_STORE_NAME);
+    const request = store.getAll();
+
+    return new Promise((resolve, reject) => {
+        request.onerror = () => reject(new Error('Failed to read data for backup.'));
+        request.onsuccess = () => {
+             const data = request.result;
+            if (!data || data.length === 0) {
+                alert("No bots to back up.");
+                return resolve();
+            }
+            try {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `lord-of-the-chatbot_backup_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                resolve();
+            } catch (e) {
+                console.error("Backup failed:", e);
+                reject(new Error('Failed to create backup file.'));
+            }
+        };
+    });
 };
