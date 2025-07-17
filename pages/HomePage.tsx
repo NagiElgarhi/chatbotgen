@@ -1,6 +1,7 @@
 
 
 import React from 'react';
+import { PlatformLogoIcon } from '../components/Icons';
 
 interface HomePageProps {
     onNavigate: (page: string) => void;
@@ -36,6 +37,10 @@ const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                 >
                     View Products
                 </button>
+            </div>
+
+            <div className="flex justify-center mt-[50px]">
+                <PlatformLogoIcon className="w-[150px] h-[300px]" />
             </div>
 
             <div className="mt-20 max-w-5xl mx-auto grid md:grid-cols-3 gap-8 text-left">

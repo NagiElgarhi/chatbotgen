@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Bot, Knowledge } from '../types';
 import { getBots, createBot, deleteBot, updateBot, backupDatabase, getBot } from '../services/databaseService';
@@ -315,47 +316,67 @@ const KnowledgeTab: React.FC<{ bot: Bot, onSave: (updates: Partial<Bot>) => Prom
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files;
-        if (!files) return;
+        if (!files || files.length === 0) return;
+
         setIsProcessing(true);
-        
-        let newTexts: string[] = [];
-        let newFileNames: string[] = [...knowledge.files];
 
-        for (const file of files) {
-            if(newFileNames.includes(file.name)) continue;
+        const newlyExtractedTexts: string[] = [];
+        const newlyAddedFileNames: string[] = [];
 
-            let textContent = '';
-            if (file.type === 'application/pdf') {
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContentProxy = await page.getTextContent();
-                    textContent += textContentProxy.items.map(item => ('str' in item) ? item.str : '').join(' ') + '\n\n';
+        try {
+            for (const file of Array.from(files)) {
+                if (knowledge.files.includes(file.name)) {
+                    alert(`File "${file.name}" has already been added.`);
+                    continue;
                 }
-            } else if (file.name.endsWith('.docx')) {
-                const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.extractRawText({ arrayBuffer });
-                textContent = result.value;
-            } else if (file.type === 'text/plain') {
-                 textContent = await file.text();
-            }
 
-            if (textContent) {
-                newTexts.push(`--- Start of content from ${file.name} ---\n\n${textContent}\n\n--- End of content from ${file.name} ---`);
-                newFileNames.push(file.name);
+                let textContent = '';
+                if (file.type === 'application/pdf') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContentProxy = await page.getTextContent();
+                        textContent += textContentProxy.items.map(item => ('str' in item) ? item.str : '').join(' ') + '\n\n';
+                    }
+                } else if (file.name.endsWith('.docx')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer });
+                    textContent = result.value;
+                } else if (file.type === 'text/plain') {
+                     textContent = await file.text();
+                } else {
+                    alert(`Unsupported file type: ${file.name}. Please upload PDF, DOCX, or TXT files.`);
+                    continue;
+                }
+
+                if (textContent.trim()) {
+                    newlyExtractedTexts.push(`--- Start of content from ${file.name} ---\n\n${textContent.trim()}\n\n--- End of content from ${file.name} ---`);
+                    newlyAddedFileNames.push(file.name);
+                } else {
+                    alert(`Could not extract any text from "${file.name}". The file might be empty, image-based, or corrupted.`);
+                }
+            }
+            
+            if (newlyAddedFileNames.length > 0) {
+                const updatedKnowledge: Knowledge = {
+                    texts: [...knowledge.texts, ...newlyExtractedTexts],
+                    files: [...knowledge.files, ...newlyAddedFileNames],
+                };
+                const updatedBot = await onSave({ knowledge: updatedKnowledge });
+                if (updatedBot?.knowledge) {
+                    setKnowledge(updatedBot.knowledge);
+                }
+            }
+        } catch (err) {
+            console.error("Error processing files:", err);
+            alert(`An error occurred while processing a file. It might be password-protected or corrupted. Error: ${(err as Error).message}`);
+        } finally {
+            setIsProcessing(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
             }
         }
-        
-        const updatedKnowledge = {
-            texts: [...knowledge.texts, ...newTexts],
-            files: newFileNames,
-        };
-        const updatedBot = await onSave({ knowledge: updatedKnowledge });
-        if(updatedBot?.knowledge) setKnowledge(updatedBot.knowledge);
-
-        setIsProcessing(false);
-        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
     };
 
     const addTextKnowledge = async () => {
@@ -397,7 +418,7 @@ const KnowledgeTab: React.FC<{ bot: Bot, onSave: (updates: Partial<Bot>) => Prom
                 {isProcessing && <div className="flex items-center gap-2 mt-2 text-amber-800"><SpinnerIcon className="w-5 h-5"/> Processing files...</div>}
             </div>
             <div>
-                <h4 className="text-lg font-bold text-stone-800 mb-2">Knowledge Items ({knowledge.files.length} Files, {knowledge.texts.length - knowledge.files.length} Texts)</h4>
+                <h4 className="text-lg font-bold text-stone-800 mb-2">Knowledge Items ({knowledge.files.length} Files, {knowledge.texts.filter(t => !t.startsWith('--- Start of content from')).length} Texts)</h4>
                 <div className="max-h-80 overflow-y-auto space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-lg wavy-gold-scrollbar">
                     {knowledge.files.map((file, i) => (
                         <div key={`file-${i}`} className="flex justify-between items-center p-2 bg-white rounded-md shadow-sm">
@@ -411,7 +432,7 @@ const KnowledgeTab: React.FC<{ bot: Bot, onSave: (updates: Partial<Bot>) => Prom
                             <button onClick={() => deleteTextKnowledge(knowledge.texts.findIndex(t => t === text))} className="p-1 text-red-500 hover:text-red-700 flex-shrink-0 ml-4"><TrashIcon className="w-5 h-5"/></button>
                         </div>
                     ))}
-                    {knowledge.files.length === 0 && knowledge.texts.length === 0 && <p className="text-stone-400 text-center p-4">No knowledge base yet.</p>}
+                    {knowledge.files.length === 0 && knowledge.texts.filter(t => !t.startsWith('--- Start of content from')).length === 0 && <p className="text-stone-400 text-center p-4">No knowledge base yet.</p>}
                 </div>
             </div>
         </div>

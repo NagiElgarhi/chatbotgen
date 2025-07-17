@@ -1,4 +1,7 @@
 import { Bot, Knowledge } from '../types';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import saveAs from 'file-saver';
+
 
 const DB_NAME = 'LordOfTheChatbotDB';
 const DB_VERSION = 1;
@@ -131,26 +134,107 @@ export const backupDatabase = async (): Promise<void> => {
 
     return new Promise((resolve, reject) => {
         request.onerror = () => reject(new Error('Failed to read data for backup.'));
-        request.onsuccess = () => {
-             const data = request.result;
-            if (!data || data.length === 0) {
+        request.onsuccess = async () => {
+            const bots: Bot[] = request.result;
+            if (!bots || bots.length === 0) {
                 alert("No bots to back up.");
                 return resolve();
             }
             try {
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `lord-of-the-chatbot_backup_${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                const docChildren: Paragraph[] = [
+                    new Paragraph({
+                        heading: HeadingLevel.TITLE,
+                        text: "Lord of the Chatbot - All Bots Backup",
+                        alignment: 'center',
+                    }),
+                    new Paragraph({ text: `Backup generated on: ${new Date().toLocaleString()}`, alignment: 'center' }),
+                    new Paragraph({ text: "" }) // Spacer
+                ];
+
+                bots.forEach((bot, index) => {
+                    docChildren.push(
+                        new Paragraph({
+                            heading: HeadingLevel.HEADING_1,
+                            text: bot.name,
+                            border: { bottom: { color: "auto", space: 1, style: "single", size: 6 } }
+                        }),
+                        new Paragraph({
+                            children: [
+                                new TextRun({ text: "Bot ID: ", bold: true }),
+                                new TextRun({ text: bot.id, style: 'Hyperlink' }) // Using a style to make it look like code
+                            ]
+                        }),
+                        new Paragraph({
+                            children: [
+                                new TextRun({ text: "Welcome Message: ", bold: true }),
+                                new TextRun({ text: bot.welcome_message })
+                            ]
+                        }),
+                        new Paragraph({ text: "" }), // Spacer
+                        new Paragraph({
+                            heading: HeadingLevel.HEADING_2,
+                            text: "Knowledge Base"
+                        })
+                    );
+
+                    if (bot.knowledge && (bot.knowledge.files.length > 0 || bot.knowledge.texts.length > 0)) {
+                        if (bot.knowledge.files.length > 0) {
+                            docChildren.push(new Paragraph({ heading: HeadingLevel.HEADING_3, text: "Source File Names" }));
+                            bot.knowledge.files.forEach(file => {
+                                docChildren.push(new Paragraph({ text: file, bullet: { level: 0 } }));
+                            });
+                             docChildren.push(new Paragraph({ text: "" }));
+                        }
+
+                        const allTexts = bot.knowledge.texts;
+                        if (allTexts.length > 0) {
+                             docChildren.push(new Paragraph({ heading: HeadingLevel.HEADING_3, text: "Knowledge Content" }));
+                             allTexts.forEach(text => {
+                                docChildren.push(new Paragraph({ text, style: "wellSpaced" }));
+                                docChildren.push(new Paragraph({ text: "" })); // Space between entries
+                             });
+                        }
+                    } else {
+                        docChildren.push(new Paragraph({ text: "No knowledge base items found for this bot.", style: "wellSpaced" }));
+                    }
+                    
+                    if (index < bots.length - 1) {
+                         docChildren.push(new Paragraph({ text: "", pageBreakBefore: true })); // Page break after each bot
+                    }
+                });
+
+                const doc = new Document({
+                    sections: [{
+                        properties: {},
+                        children: docChildren,
+                    }],
+                    styles: {
+                        paragraphStyles: [
+                            {
+                                id: "wellSpaced",
+                                name: "Well Spaced",
+                                basedOn: "Normal",
+                                next: "Normal",
+                                run: { font: "Calibri", size: 22 }, // 11pt
+                                paragraph: {
+                                    spacing: { before: 100, after: 100 },
+                                    indent: { left: 720 },
+                                    border: {
+                                        bottom: { color: "auto", space: 1, style: "single", size: 4 },
+                                    },
+                                },
+                            },
+                        ],
+                    }
+                });
+
+                const blob = await Packer.toBlob(doc);
+                saveAs(blob, `lord-of-the-chatbot_backup_${new Date().toISOString().split('T')[0]}.docx`);
                 resolve();
+
             } catch (e) {
-                console.error("Backup failed:", e);
-                reject(new Error('Failed to create backup file.'));
+                console.error("Backup to DOCX failed:", e);
+                reject(new Error(`Failed to create DOCX backup file: ${(e as Error).message}`));
             }
         };
     });
