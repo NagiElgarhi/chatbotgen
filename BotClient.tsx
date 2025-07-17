@@ -20,16 +20,33 @@ const BotClient: React.FC<BotClientProps> = ({ botId }) => {
     useEffect(() => {
         const fetchBotData = async () => {
             try {
-                const fetchedBot = await getBot(botId);
-                if (fetchedBot) {
-                    setBot(fetchedBot);
-                    setView('bot');
+                // Standalone package check: fetch local data file first.
+                const response = await fetch('./bot_data.json');
+                if (response.ok) {
+                    const localBot = await response.json();
+                    if (localBot && localBot.id) {
+                        setBot(localBot);
+                        setView('bot');
+                        return; // Local data loaded, we're done.
+                    }
+                }
+
+                // Fallback to production mode: Use botId from props to get from DB.
+                if (botId) {
+                    const dbBot = await getBot(botId);
+                    if (dbBot) {
+                        setBot(dbBot);
+                        setView('bot');
+                    } else {
+                        throw new Error(`Bot with ID "${botId}" not found in the database.`);
+                    }
                 } else {
-                    throw new Error("Bot not found.");
+                    // This state is reached if bot_data.json is not found AND no botId is provided.
+                    throw new Error("No bot data source available. 'bot_data.json' is missing and no 'botId' was provided.");
                 }
             } catch (err: any) {
-                console.error("Failed to fetch bot data:", err);
-                setError("Could not load bot data. Please ensure the backend server is running and the Bot ID is correct.");
+                console.error("Failed to load bot data:", err);
+                setError(err.message || "An unknown error occurred while loading bot data.");
                 setView('error');
             }
         };

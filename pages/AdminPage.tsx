@@ -13,7 +13,7 @@ import saveAs from 'file-saver';
 // --- Worker setup for PDF parsing ---
 // The dynamic URL constructor was failing. Pointing directly to the CDN-hosted worker script is more robust.
 // @ts-ignore
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@5.3.93/build/pdf.worker.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@4.4.185/build/pdf.worker.mjs';
 
 
 const AdminPage: React.FC = () => {
@@ -435,83 +435,64 @@ const DeployTab: React.FC<{ bot: Bot }> = ({ bot }) => {
         try {
             const zip = new JSZip();
 
-            // 1. Create README.md
+            // 1. Get the full, up-to-date bot data including knowledge
+            const fullBot = await getBot(bot.id);
+            if (!fullBot) {
+                throw new Error("Could not retrieve full bot data for packaging.");
+            }
+            zip.file("bot_data.json", JSON.stringify(fullBot, null, 2));
+
+            // 2. Create README.md with instructions for the user
             const readmeContent = `# Standalone Chatbot Setup
 
-Thank you for downloading your chatbot from Lord of the Chatbot! To get your chatbot running, you need to add your Google AI API key.
+Thank you for downloading your chatbot! This package contains a self-sufficient chatbot client.
 
-## Instructions
+## Instructions to Run
 
-1.  **Get your API Key**: If you don't have one, get your key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-2.  **Edit \`gemini-service.js\`**: Open the \`gemini-service.js\` file in this package.
-3.  **Find the API Key placeholder**: Look for the line: \`const apiKey = 'YOUR_API_KEY_HERE';\`
-4.  **Add your key**: Replace \`'YOUR_API_KEY_HERE'\` with your actual Google AI API key.
-5.  **Save the file**.
-6.  **Upload to your server**: Upload all files to your web server and open \`index.html\`.
+1.  **Set API Key**: This chatbot requires a Google AI API Key to function. You must configure this on the server where you will host these files. The application is designed to read the key from a process environment variable named \`API_KEY\`.
+
+    *Example for Node.js server:*
+    \`\`\`
+    process.env.API_KEY = 'YOUR_GOOGLE_AI_API_KEY';
+    \`\`\`
+
+2.  **Get your API Key**: If you don't have one, you can get it from [Google AI Studio](https://aistudio.google.com/app/apikey).
+
+3.  **Upload Files**: Upload all the files from this ZIP archive (\`index.html\`, \`app.js\`, \`bot_data.json\`) to your web server.
+
+4.  **Launch**: Open the \`index.html\` file in your browser from your server's URL. The chatbot will appear automatically.
+
+The chatbot will load its personality, appearance, and knowledge from the included \`bot_data.json\` file. To update the bot, you must regenerate and download a new package from the management panel.
 `;
             zip.file("README.md", readmeContent);
 
-            // 2. Create index.html
-            const indexHtmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${bot.name}</title>
-    <style> body { margin: 0; background-color: #f0f0f0; } </style>
-</head>
-<body>
-    <p>Loading Chatbot...</p>
-    <script src="index.js?botId=${bot.id}" defer></script>
-</body>
-</html>`;
-            zip.file("index.html", indexHtmlContent);
+            // 3. Create the standalone index.html file by fetching and modifying the original
+            const mainHtmlResponse = await fetch('/index.html');
+            let mainHtmlText = await mainHtmlResponse.text();
 
-            // 3. Create index.js (This would be your main application bundle)
-            // For this example, we'll assume the main `index.js` is what's loaded.
-            // We need to fetch the content of our running `index.js`.
-            const indexJsResponse = await fetch('/index.js');
-            const indexJsContent = await indexJsResponse.text();
-            zip.file("index.js", indexJsContent);
-
-            // 4. Create a custom gemini-service.js with a placeholder
-            const geminiServiceResponse = await fetch('/services/geminiService.ts');
-            let geminiServiceContent = await geminiServiceResponse.text();
-
-            // Replace environment variable logic with a simple placeholder constant
-            geminiServiceContent = geminiServiceContent.replace(
-                /let ai: GoogleGenAI \| null = null;.*?return ai;/s,
-`const apiKey = 'YOUR_API_KEY_HERE';
-let ai: GoogleGenAI | null = null;
-
-const getAiClient = (): GoogleGenAI => {
-    if (ai) return ai;
-    if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-        throw new Error("API Key not found. Please add your Google AI API Key to gemini-service.js.");
-    }
-    ai = new GoogleGenAI({ apiKey });
-    return ai;
-};`
+            // Replace the original script tag with one that points to our new app entry point
+            mainHtmlText = mainHtmlText.replace(
+                /<script type="module" src="index.tsx"><\/script>/,
+                '<script type="module" src="app.js"></script>'
             );
-            // Convert TS to JS (simple regex replacements for this case)
-            geminiServiceContent = geminiServiceContent
-                .replace(/import .*? from '.*?';/g, '')
-                .replace(/export const/g, 'const')
-                .replace(/: [A-Z][a-zA-Z]+/g, ''); // Remove type annotations
-
-            zip.file("gemini-service.js", geminiServiceContent);
+             mainHtmlText = mainHtmlText.replace(
+                /<title>.*<\/title>/,
+                `<title>${bot.name} - Powered by Lord of the Chatbot</title>`
+            );
+            zip.file("index.html", mainHtmlText);
             
-            // 5. Package the bot data itself
-            zip.file(`bot_data.json`, JSON.stringify(bot, null, 2));
+            // 4. Fetch the application's entry point script
+            const appScriptResponse = await fetch('/index.tsx');
+            const appScriptContent = await appScriptResponse.text();
+            zip.file("app.js", appScriptContent);
 
-
-            // Generate and download zip
+            // 5. Generate and download the zip file
             const blob = await zip.generateAsync({ type: 'blob' });
             saveAs(blob, `${bot.name.replace(/\s+/g, '_')}_standalone.zip`);
 
         } catch (err) {
             console.error("Download failed:", err);
-            alert("Failed to package the bot for download.");
+            alert(`Failed to package the bot for download: ${(err as Error).message}`);
         } finally {
             setIsDownloading(false);
         }
@@ -534,8 +515,8 @@ const getAiClient = (): GoogleGenAI => {
                 <h3 className="text-xl font-bold font-cinzel text-amber-900 mb-2">Download Standalone Bot</h3>
                 <p className="text-stone-600 mb-4">
                     Download a ZIP file containing all necessary files to run the bot on your own server.
-                    After downloading, you **must** edit the <code>gemini-service.js</code> file to add your Google AI API key.
-                    Instructions are included in the <code>README.md</code> file inside the ZIP.
+                    The bot is self-contained and loads its knowledge locally. You **must** configure the \`API_KEY\`
+                    as an environment variable on your hosting server as per the included \`README.md\` file.
                 </p>
                 <button
                     onClick={handleDownload}
