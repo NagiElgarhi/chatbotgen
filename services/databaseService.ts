@@ -78,6 +78,35 @@ export const createBot = async (botData: Partial<Bot>): Promise<Bot> => {
     });
 };
 
+export const updateBot = async (id: string, updates: Partial<Omit<Bot, 'id' | 'created_at' | 'admin_pass'>>): Promise<Bot> => {
+    const db = await openDB();
+    const botToUpdate = await getBot(id);
+    if (!botToUpdate) {
+        throw new Error(`Bot with id ${id} not found.`);
+    }
+
+    const updatedBot: Bot = {
+        ...botToUpdate,
+        ...updates,
+        id: botToUpdate.id,
+        created_at: botToUpdate.created_at,
+        admin_pass: botToUpdate.admin_pass,
+        updated_at: new Date().toISOString(),
+    };
+    
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(BOT_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(BOT_STORE_NAME);
+        store.put(updatedBot);
+        
+        transaction.oncomplete = () => resolve(updatedBot);
+        transaction.onerror = () => {
+            console.error("Update bot transaction error", transaction.error);
+            reject(new Error('Failed to update bot. Transaction failed.'));
+        };
+    });
+};
+
 export const deleteBot = async (id: string): Promise<void> => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -91,26 +120,7 @@ export const deleteBot = async (id: string): Promise<void> => {
 };
 
 export const updateBotKnowledge = async (id: string, knowledge: Knowledge): Promise<Bot> => {
-    const db = await openDB();
-    const botToUpdate = await getBot(id);
-    if (!botToUpdate) {
-        throw new Error(`Bot with id ${id} not found.`);
-    }
-
-    const updatedBot: Bot = {
-        ...botToUpdate,
-        knowledge,
-        updated_at: new Date().toISOString(),
-    };
-    
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(BOT_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(BOT_STORE_NAME);
-        store.put(updatedBot);
-        
-        transaction.oncomplete = () => resolve(updatedBot);
-        transaction.onerror = () => reject(new Error('Failed to update bot knowledge. Transaction failed.'));
-    });
+    return updateBot(id, { knowledge });
 };
 
 export const backupDatabase = async (): Promise<void> => {

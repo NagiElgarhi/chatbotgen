@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Knowledge, Message } from '../types';
 
@@ -5,15 +6,13 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = (): GoogleGenAI => {
     if (ai) {
-        // Here we could add logic to re-init if the key changes, but for now this is fine.
         return ai;
     }
 
-    const apiKey = localStorage.getItem('google_api_key');
-    if (!apiKey) {
-        throw new Error("API Key not found in local storage. Please set it on the Admin page.");
+    if (!process.env.API_KEY) {
+        throw new Error("API Key not found. Please set the API_KEY environment variable for the application.");
     }
-    ai = new GoogleGenAI({ apiKey });
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai;
 }
 
@@ -120,7 +119,7 @@ export const generateResponse = async (query: string, chatHistory: Message[], kn
     } catch (e) {
         console.error("Gemini Service Error:", e);
         const errorMessage = (e as Error).message.includes("API Key not found")
-            ? "The Google AI API Key is not set. Please configure it in the Admin panel."
+            ? "The Google AI API Key is not configured for this application. Please contact the administrator."
             : "Sorry, I'm having trouble connecting to the smart assistant right now. Please try again later.";
         
         // Return a fallback response

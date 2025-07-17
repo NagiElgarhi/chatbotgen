@@ -52,7 +52,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSendMessage
                     className="absolute right-full mr-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/10 hover:bg-black/20 text-stone-700 hover:text-stone-900 transition-all"
                     aria-label="Previous"
                  >
-                     <ChevronRightIcon className="w-5 h-5" />
+                     <ChevronLeftIcon className="w-5 h-5" />
                  </button>
             )}
             <p className="text-base leading-relaxed whitespace-pre-wrap">{currentText}</p>
@@ -62,7 +62,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSendMessage
                     className="absolute left-full ml-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/10 hover:bg-black/20 text-stone-700 hover:text-stone-900 transition-all"
                     aria-label="Next"
                  >
-                     <ChevronLeftIcon className="w-5 h-5" />
+                     <ChevronRightIcon className="w-5 h-5" />
                  </button>
             )}
         </div>

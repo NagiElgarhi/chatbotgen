@@ -1,36 +1,427 @@
-import React, { useState, useCallback, useEffect } from 'react';
+
+
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Bot, Knowledge } from '../types';
-import { getBots, createBot, deleteBot, updateBotKnowledge, backupDatabase, getBot } from '../services/databaseService';
-import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon, UserIcon, DocumentTextIcon, PlatformLogoIcon } from '../components/Icons';
+import { getBots, createBot, deleteBot, updateBot, backupDatabase, getBot } from '../services/databaseService';
+import { PlusIcon, TrashIcon, CodeIcon, ClipboardIcon, CheckIcon, UploadIcon, ChevronLeftIcon, SpinnerIcon, CheckCircleIcon, DownloadIcon, DocumentTextIcon, PlatformLogoIcon, CogIcon, ArrowRightIcon, XIcon, BrainIcon } from '../components/Icons';
 import { colorOptions } from '../utils/colors';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
-import { ApiKeyManager } from '../components/ApiKeyManager';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 
+// --- Worker setup for PDF parsing ---
+// The dynamic URL constructor was failing. Pointing directly to the CDN-hosted worker script is more robust.
 // @ts-ignore
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@5.3.93/build/pdf.worker.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@5.3.93/build/pdf.worker.mjs';
 
-// --- Helper Components ---
-const Modal: React.FC<{ children: React.ReactNode; onClose: () => void; title: string }> = ({ children, onClose, title }) => (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-        <div 
-            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto ring-1 ring-amber-300 flex flex-col max-h-[90vh]" 
-            onClick={(e) => e.stopPropagation()}
-        >
-            <h2 className="text-2xl font-bold text-amber-800 p-6 sm:p-8 pb-4 text-center flex-shrink-0 border-b border-amber-200">{title}</h2>
-            <div className="overflow-y-auto wavy-gold-scrollbar p-6 sm:p-8 pt-6">
-                {children}
+
+const AdminPage: React.FC = () => {
+    const [bots, setBots] = useState<Omit<Bot, 'knowledge'>[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
+    const [view, setView] = useState<'list' | 'edit'>('list');
+    const [error, setError] = useState<string | null>(null);
+
+    const loadBots = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const fetchedBots = await getBots();
+            setBots(fetchedBots);
+        } catch (err) {
+            console.error("Failed to load bots:", err);
+            setError("Could not load bots. Please ensure IndexedDB is available and not blocked.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadBots();
+    }, [loadBots]);
+
+    const handleCreateBot = async () => {
+        try {
+            const newBot = await createBot({ name: 'New Bot', welcome_message: 'How can I assist you today?' });
+            await loadBots();
+            handleSelectBot(newBot.id);
+        } catch (err) {
+            console.error("Failed to create bot:", err);
+            setError("Failed to create a new bot.");
+        }
+    };
+    
+    const handleDeleteBot = async (id: string) => {
+        if (window.confirm('Are you sure you want to permanently delete this bot and all its knowledge?')) {
+            try {
+                await deleteBot(id);
+                await loadBots();
+                if (selectedBot?.id === id) {
+                    setSelectedBot(null);
+                    setView('list');
+                }
+            } catch (err) {
+                console.error("Failed to delete bot:", err);
+                setError("Failed to delete the bot.");
+            }
+        }
+    };
+
+    const handleSelectBot = async (id: string) => {
+        try {
+            setIsLoading(true);
+            const fullBot = await getBot(id);
+            if(fullBot) {
+                setSelectedBot(fullBot);
+                setView('edit');
+            } else {
+                 throw new Error("Bot not found");
+            }
+        } catch(err) {
+            console.error(`Failed to fetch bot ${id}:`, err);
+            setError(`Could not load details for bot ${id}.`);
+            setView('list');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    const handleUpdateBot = (updatedBot: Bot) => {
+        setSelectedBot(updatedBot);
+        setBots(prev => prev.map(b => b.id === updatedBot.id ? { ...b, name: updatedBot.name, updated_at: updatedBot.updated_at } : b));
+    };
+
+    const handleBackup = async () => {
+        try {
+            await backupDatabase();
+            alert("Database backup successful!");
+        } catch (err) {
+            console.error("Backup failed:", err);
+            alert(`Backup failed: ${(err as Error).message}`);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-stone-100 p-4 sm:p-8">
+            <div className="max-w-7xl mx-auto">
+                <header className="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <PlatformLogoIcon className="h-12 w-12"/>
+                        <div>
+                           <h1 className="text-4xl font-cinzel font-bold text-amber-900">Bot Management Council</h1>
+                           <p className="text-stone-600">Forge and command your legion of AI assistants.</p>
+                        </div>
+                    </div>
+                    {view === 'edit' && (
+                         <button onClick={() => setView('list')} className="flex items-center gap-2 px-4 py-2 bg-stone-200 text-stone-800 font-semibold rounded-lg hover:bg-stone-300 transition-colors">
+                            <ChevronLeftIcon className="w-5 h-5"/>
+                            Back to List
+                        </button>
+                    )}
+                </header>
+
+                {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">{error}</div>}
+
+                {isLoading && (
+                    <div className="flex justify-center items-center py-16">
+                        <SpinnerIcon className="w-12 h-12 text-amber-700"/>
+                    </div>
+                )}
+                
+                {!isLoading && view === 'list' && (
+                    <BotList 
+                        bots={bots}
+                        onCreate={handleCreateBot}
+                        onEdit={handleSelectBot}
+                        onDelete={handleDeleteBot}
+                        onBackup={handleBackup}
+                    />
+                )}
+                
+                {!isLoading && view === 'edit' && selectedBot && (
+                    <BotEditor
+                        key={selectedBot.id} // Re-mount component when bot changes
+                        bot={selectedBot}
+                        onBotUpdate={handleUpdateBot}
+                    />
+                )}
             </div>
         </div>
+    );
+};
+
+
+// =================================================================================
+// Bot List View
+// =================================================================================
+interface BotListProps {
+    bots: Omit<Bot, 'knowledge'>[];
+    onCreate: () => void;
+    onEdit: (id: string) => void;
+    onDelete: (id: string) => void;
+    onBackup: () => void;
+}
+const BotList: React.FC<BotListProps> = ({ bots, onCreate, onEdit, onDelete, onBackup }) => (
+     <div className="bg-white/60 p-6 rounded-xl shadow-lg border border-amber-200">
+        <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold font-cinzel text-stone-800">Your Bots</h2>
+            <div className="flex gap-2">
+                 <button onClick={onBackup} className="px-4 py-2 bg-stone-600 text-white font-bold rounded-md hover:bg-stone-700 transition-colors flex items-center justify-center gap-2">
+                    <DownloadIcon className="w-5 h-5"/>
+                    <span>Backup All</span>
+                </button>
+                <button onClick={onCreate} className="px-4 py-2 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 transition-colors flex items-center justify-center gap-2">
+                    <PlusIcon className="w-5 h-5"/>
+                    <span>Create New Bot</span>
+                </button>
+            </div>
+        </div>
+
+        {bots.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-stone-300 rounded-lg">
+                <p className="text-stone-500">No bots found. Create your first one to get started!</p>
+            </div>
+        ) : (
+            <div className="space-y-4">
+                {bots.map(bot => (
+                    <div key={bot.id} className="bg-simple-gold-gradient p-4 rounded-lg shadow-md flex items-center justify-between transition-all hover:shadow-lg hover:scale-[1.01]">
+                        <div className="flex items-center gap-4">
+                            <img src={bot.image_base64 || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2M1YTMyYyI+PHBhdGggZD0iTTE5IDEzYy41NTIzIDAgMSAuNDQ3NyAxIDEtLjAwMzMgMS45MzIxLS43ODY1IDMuNzIyNi0yLjE1NzUgNS4wOTM1cy0zLjE2MTQgMi4xNTQyLTUuMDk0IDIuMTU3NWMtLjU1MjMgMC0xLS40NDc3LTEtMXMuNDQ3Ny0xIDEtMWMxLjM4MzQgMCAyLjY2ODYtLjU2MTYgMy42MDY2LTEuNDk5NlMxNSA4LjM4MzQgMTUgN2MwLS41NTIzLjQ0NzctMSAxLTFzMSAuNDQ3NyAxIDFWNWMwIC4zNTU5LS4wOTUgLjcwNjEtLjI3MzMgMS4wMTM3LS40MDExLjY5MzktMS4wMzcgMS4yMDM0LTEuNzkyMyAxLjQ3OTEtMS4wMjI0LjM4NDItMi4xMzUzLjM4NDItMy4xNTc3IDAtLjc1NTYtLjI3NTctMS4zOTEyLS43ODUyLTEuNzkyMy0xLjQ3OTFDOS4wOTUgNS43MDYxIDkgNS4zNTU5IDkgNVY0YzAgLS41NTIzLjQ0NzctMSAxLTFzMSAuNDQ3NyAxIDF2LjVhMiAyIDAgMCAwIDQgMHYtLjV6bS04IDBjLS41NTIzIDAtMS0uNDQ3Ny0xLTFzLjQ0NzctMSAxLTFoLjVjMS45MzMyLS4wMDMzIDMuNzIyNi43ODY1IDUuMDk0IDIuMTU3NVMxNy45OTY3IDE2LjA2NzkgMTggMThjMCAuNTUyMy0uNDQ3NyAxLTEgMXMtMS0uNDQ3Ny0xLTFjMC0xLjM4MzQtLjU2MTYtMi42Njg2LTEuNDk5Ni0zLjYwNjZTMxMS4zODM0IDEyIDEwIDEySDl6bS00IDRjLS41NTIzIDAtMS0uNDQ3Ny0xLTFzLjQ0NzctMSAxLTFjMS45MzMyLS4wMDMzIDMuNzIyNi43ODY1IDUuMDk0IDIuMTU3NVMxMi45OTY3IDIwLjA2NzkgMTMgMjJjMCAuNTUyMy0uNDQ3NyAxLTEgMXMtMS0uNDQ3Ny0xLTFjLS4wMDMzLTEuMzgzNC0uNTY1EtMi42Njg2LTEuNDk5OC0zLjYwNjZzLTIuMjIzMi0xLjQ5NjMtMy42MDYyLTEuNDk5NnoiLz48L3N2Zz4='} alt="bot" className="w-12 h-12 rounded-full object-cover bg-white/50 border-2 border-amber-800/50" />
+                            <div>
+                                <p className="font-bold text-lg text-stone-900">{bot.name}</p>
+                                <p className="text-xs text-stone-700 font-mono select-all">{bot.id}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => onEdit(bot.id)} className="p-2 bg-white/30 rounded-full text-stone-800 hover:bg-white/60 transition-colors" aria-label="Edit"><CogIcon className="w-6 h-6"/></button>
+                            <button onClick={() => onDelete(bot.id)} className="p-2 bg-red-500/80 rounded-full text-white hover:bg-red-600 transition-colors" aria-label="Delete"><TrashIcon className="w-6 h-6"/></button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )}
     </div>
 );
 
-const EmbedCodeModal: React.FC<{ botId: string; onClose: () => void }> = ({ botId, onClose }) => {
+
+// =================================================================================
+// Bot Editor View
+// =================================================================================
+interface BotEditorProps {
+    bot: Bot;
+    onBotUpdate: (bot: Bot) => void;
+}
+const BotEditor: React.FC<BotEditorProps> = ({ bot: initialBot, onBotUpdate }) => {
+    const [bot, setBot] = useState<Bot>(initialBot);
+    const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'deploy'>('settings');
+
+    const handleUpdate = async (updates: Partial<Bot>) => {
+        try {
+            const updatedBot = await updateBot(bot.id, updates);
+            setBot(updatedBot);
+            onBotUpdate(updatedBot);
+            return updatedBot;
+        } catch(err) {
+            console.error("Failed to update bot:", err);
+            alert("Failed to save changes.");
+            return null;
+        }
+    };
+    
+    return (
+        <div className="bg-white/60 rounded-xl shadow-lg border border-amber-200 overflow-hidden">
+            <div className="flex items-center justify-between p-4 bg-simple-gold-gradient">
+                <h2 className="text-2xl font-bold font-cinzel text-stone-800">{bot.name}</h2>
+                <div className="flex border border-amber-800/30 rounded-lg overflow-hidden bg-black/5 text-sm font-semibold">
+                    <button onClick={() => setActiveTab('settings')} className={`px-4 py-1.5 transition-colors ${activeTab === 'settings' ? 'bg-amber-600 text-white' : 'hover:bg-amber-100'}`}>Settings</button>
+                    <button onClick={() => setActiveTab('knowledge')} className={`px-4 py-1.5 transition-colors border-l border-r border-amber-800/30 ${activeTab === 'knowledge' ? 'bg-amber-600 text-white' : 'hover:bg-amber-100'}`}>Knowledge</button>
+                    <button onClick={() => setActiveTab('deploy')} className={`px-4 py-1.5 transition-colors ${activeTab === 'deploy' ? 'bg-amber-600 text-white' : 'hover:bg-amber-100'}`}>Deploy</button>
+                </div>
+            </div>
+
+            <div className="p-6">
+                {activeTab === 'settings' && <SettingsTab bot={bot} onSave={handleUpdate} />}
+                {activeTab === 'knowledge' && <KnowledgeTab bot={bot} onSave={handleUpdate} />}
+                {activeTab === 'deploy' && <DeployTab bot={bot} />}
+            </div>
+        </div>
+    );
+};
+
+
+// --- Editor Tabs ---
+
+const SettingsTab: React.FC<{ bot: Bot, onSave: (updates: Partial<Bot>) => void }> = ({ bot, onSave }) => {
+    const [name, setName] = useState(bot.name);
+    const [welcomeMessage, setWelcomeMessage] = useState(bot.welcome_message);
+    const [image, setImage] = useState(bot.image_base64);
+    const [wavyColor, setWavyColor] = useState(bot.wavy_color || colorOptions[0].value);
+    const [isSaving, setIsSaving] = useState(false);
+    
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                setImage(event.target?.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        await onSave({ name, welcome_message: welcomeMessage, image_base64: image, wavy_color: wavyColor });
+        setIsSaving(false);
+        alert("Settings Saved!");
+    };
+    
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-sm font-bold text-stone-700 mb-1">Bot Name</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 bg-white border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-amber-500"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-stone-700 mb-1">Welcome Message</label>
+                    <input type="text" value={welcomeMessage} onChange={e => setWelcomeMessage(e.target.value)} className="w-full px-3 py-2 bg-white border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-amber-500"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-stone-700 mb-1">Bot Avatar Image</label>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200"/>
+                    {image && <img src={image} alt="preview" className="w-20 h-20 rounded-full mt-2 object-cover border-2 border-amber-300"/>}
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-stone-700 mb-1">Button Color Gradient</label>
+                    <select value={wavyColor} onChange={e => setWavyColor(e.target.value)} className="w-full px-3 py-2 bg-white border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-amber-500">
+                        {colorOptions.map(c => <option key={c.name} value={c.value}>{c.name}</option>)}
+                    </select>
+                </div>
+            </div>
+             <button onClick={handleSave} disabled={isSaving} className="px-6 py-2 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:bg-stone-400">
+                {isSaving ? <SpinnerIcon className="w-5 h-5"/> : <CheckCircleIcon className="w-5 h-5"/>}
+                <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
+            </button>
+        </div>
+    );
+};
+
+const KnowledgeTab: React.FC<{ bot: Bot, onSave: (updates: Partial<Bot>) => Promise<Bot | null> }> = ({ bot, onSave }) => {
+    const [knowledge, setKnowledge] = useState<Knowledge>(bot.knowledge || { texts: [], files: [] });
+    const [newText, setNewText] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files) return;
+        setIsProcessing(true);
+        
+        let newTexts: string[] = [];
+        let newFileNames: string[] = [...knowledge.files];
+
+        for (const file of files) {
+            if(newFileNames.includes(file.name)) continue;
+
+            let textContent = '';
+            if (file.type === 'application/pdf') {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContentProxy = await page.getTextContent();
+                    textContent += textContentProxy.items.map(item => ('str' in item) ? item.str : '').join(' ') + '\n\n';
+                }
+            } else if (file.name.endsWith('.docx')) {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer });
+                textContent = result.value;
+            } else if (file.type === 'text/plain') {
+                 textContent = await file.text();
+            }
+
+            if (textContent) {
+                newTexts.push(`--- Start of content from ${file.name} ---\n\n${textContent}\n\n--- End of content from ${file.name} ---`);
+                newFileNames.push(file.name);
+            }
+        }
+        
+        const updatedKnowledge = {
+            texts: [...knowledge.texts, ...newTexts],
+            files: newFileNames,
+        };
+        const updatedBot = await onSave({ knowledge: updatedKnowledge });
+        if(updatedBot?.knowledge) setKnowledge(updatedBot.knowledge);
+
+        setIsProcessing(false);
+        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
+    };
+
+    const addTextKnowledge = async () => {
+        if (!newText.trim()) return;
+        const updatedKnowledge = {
+            ...knowledge,
+            texts: [...knowledge.texts, newText.trim()],
+        };
+        const updatedBot = await onSave({ knowledge: updatedKnowledge });
+        if(updatedBot?.knowledge) setKnowledge(updatedBot.knowledge);
+        setNewText('');
+    };
+
+    const deleteTextKnowledge = async (index: number) => {
+        const updatedTexts = knowledge.texts.filter((_, i) => i !== index);
+        const updatedKnowledge = { ...knowledge, texts: updatedTexts };
+        const updatedBot = await onSave({ knowledge: updatedKnowledge });
+        if(updatedBot?.knowledge) setKnowledge(updatedBot.knowledge);
+    };
+
+    const deleteFileKnowledge = async (fileName: string) => {
+        const updatedFiles = knowledge.files.filter(f => f !== fileName);
+        const updatedTexts = knowledge.texts.filter(t => !(t.includes(`--- Start of content from ${fileName} ---`) && t.includes(`--- End of content from ${fileName} ---`)));
+        const updatedKnowledge = { texts: updatedTexts, files: updatedFiles };
+        const updatedBot = await onSave({ knowledge: updatedKnowledge });
+        if(updatedBot?.knowledge) setKnowledge(updatedBot.knowledge);
+    };
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <label className="block text-sm font-bold text-stone-700 mb-1">Add Plain Text</label>
+                <textarea value={newText} onChange={e => setNewText(e.target.value)} rows={4} className="w-full px-3 py-2 bg-white border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-amber-500" placeholder="Paste or type knowledge here..."></textarea>
+                <button onClick={addTextKnowledge} className="mt-2 px-4 py-2 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 transition-colors flex items-center gap-2"><PlusIcon/> Add Text</button>
+            </div>
+             <div>
+                <label className="block text-sm font-bold text-stone-700 mb-1">Upload Documents (.pdf, .docx, .txt)</label>
+                <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} accept=".pdf,.docx,.txt" className="w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200"/>
+                {isProcessing && <div className="flex items-center gap-2 mt-2 text-amber-800"><SpinnerIcon className="w-5 h-5"/> Processing files...</div>}
+            </div>
+            <div>
+                <h4 className="text-lg font-bold text-stone-800 mb-2">Knowledge Items ({knowledge.files.length} Files, {knowledge.texts.length - knowledge.files.length} Texts)</h4>
+                <div className="max-h-80 overflow-y-auto space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-lg wavy-gold-scrollbar">
+                    {knowledge.files.map((file, i) => (
+                        <div key={`file-${i}`} className="flex justify-between items-center p-2 bg-white rounded-md shadow-sm">
+                            <span className="flex items-center gap-2 text-stone-700"><DocumentTextIcon className="w-5 h-5"/> {file}</span>
+                            <button onClick={() => deleteFileKnowledge(file)} className="p-1 text-red-500 hover:text-red-700"><TrashIcon className="w-5 h-5"/></button>
+                        </div>
+                    ))}
+                    {knowledge.texts.filter(t => !t.startsWith('--- Start of content from')).map((text, i) => (
+                        <div key={`text-${i}`} className="flex justify-between items-center p-2 bg-white rounded-md shadow-sm">
+                            <p className="text-stone-700 truncate text-sm italic">"{text}"</p>
+                            <button onClick={() => deleteTextKnowledge(knowledge.texts.findIndex(t => t === text))} className="p-1 text-red-500 hover:text-red-700 flex-shrink-0 ml-4"><TrashIcon className="w-5 h-5"/></button>
+                        </div>
+                    ))}
+                    {knowledge.files.length === 0 && knowledge.texts.length === 0 && <p className="text-stone-400 text-center p-4">No knowledge base yet.</p>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const DeployTab: React.FC<{ bot: Bot }> = ({ bot }) => {
     const [copied, setCopied] = useState(false);
-    const embedUrl = `${window.location.origin}${window.location.pathname}?botId=${botId}`;
-    const embedCode = `<iframe src="${embedUrl}" width="450" height="750" style="border:none; border-radius: 1rem;" title="Lord of the Chatbot"></iframe>`;
+    const [isDownloading, setIsDownloading] = useState(false);
+    const embedCode = `<script src="${window.location.origin}/index.js?botId=${bot.id}" defer></script>`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(embedCode).then(() => {
@@ -38,545 +429,126 @@ const EmbedCodeModal: React.FC<{ botId: string; onClose: () => void }> = ({ botI
             setTimeout(() => setCopied(false), 2000);
         });
     };
-
-    return (
-        <Modal onClose={onClose} title="Embed Bot Code">
-            <p className="text-lg mb-4 text-stone-700 text-center">
-                Copy this iframe code and paste it into your website's HTML to display this bot.
-            </p>
-            <div className="bg-stone-800 text-stone-100 p-4 rounded-lg font-mono text-sm relative" dir="ltr">
-                {embedCode}
-                <button onClick={handleCopy} className="absolute top-2 right-2 p-2 rounded-md bg-stone-700 hover:bg-stone-600">
-                    {copied ? <CheckIcon className="w-5 h-5 text-green-400" /> : <ClipboardIcon className="w-5 h-5" />}
-                </button>
-            </div>
-             <div className="text-center mt-8">
-                <button onClick={onClose} className="px-10 py-3 bg-amber-600 text-white text-lg font-bold rounded-full hover:bg-amber-700 transition-colors">
-                    Close
-                </button>
-            </div>
-        </Modal>
-    );
-};
-
-// --- Knowledge Management View ---
-interface ProcessedFile { name: string; text: string; }
-const KnowledgeManager: React.FC<{ bot: Bot; onBack: () => void }> = ({ bot, onBack }) => {
-    const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
-    const [parsingFiles, setParsingFiles] = useState<string[]>([]);
-    const [isUploading, setIsUploading] = useState(false);
     
-    useEffect(() => {
-        if (bot.knowledge?.files) {
-            setProcessedFiles(bot.knowledge.files.map(name => ({name, text: '...'})));
-        }
-    }, [bot]);
-
-    const extractTextFromLocalFile = async (file: File): Promise<string> => {
-        const mimeType = file.type;
-        const arrayBuffer = await file.arrayBuffer();
-
-        if (mimeType === 'application/pdf') {
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let fullText = '';
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                // @ts-ignore
-                fullText += content.items.map(item => item.str).join(' ') + '\n';
-            }
-            return fullText;
-        } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-            const result = await mammoth.extractRawText({ arrayBuffer });
-            return result.value;
-        }
-        throw new Error(`File type ${mimeType} is not supported.`);
-    };
-
-     const processFile = useCallback(async (file: File) => {
-        if (processedFiles.some(pf => pf.name === file.name) || parsingFiles.includes(file.name)) return;
-        setParsingFiles(prev => [...prev, file.name]);
+    const handleDownload = async () => {
+        setIsDownloading(true);
         try {
-            const text = await extractTextFromLocalFile(file);
-            setProcessedFiles(prev => [...prev.filter(pf => pf.text !== '...'), { name: file.name, text }]);
-        } catch (error) {
-            alert(`Error processing file ${file.name}: ${(error as Error).message}`);
-        } finally {
-            setParsingFiles(prev => prev.filter(name => name !== file.name));
-        }
-    }, [processedFiles, parsingFiles]);
-
-    const handleFileSelection = (files: FileList | null) => files && Array.from(files).forEach(processFile);
-    const handleRemoveFile = (fileName: string) => setProcessedFiles(prev => prev.filter(f => f.name !== fileName));
-    
-    const handleUpdateKnowledge = async () => {
-        const texts = processedFiles.flatMap(f => f.text.split(/\n\s*\n+/).map(c => c.trim()).filter(c => c.length > 20));
-        if (texts.length === 0) {
-            alert('No valid content to save. Ensure files contain text.');
-            return;
-        }
-        
-        const newKnowledge: Knowledge = {
-            texts,
-            files: processedFiles.map(f => f.name),
-        };
-
-        setIsUploading(true);
-        try {
-            await updateBotKnowledge(bot.id, newKnowledge);
-            alert("Knowledge base updated successfully!");
-            onBack();
-        } catch (error) {
-            alert(`Failed to update knowledge base: ${(error as Error).message}`);
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
-    return (
-        <div>
-            <button onClick={onBack} className="flex items-center gap-2 text-amber-800 hover:text-amber-600 font-semibold mb-6">
-                <ChevronLeftIcon className="w-5 h-5"/>
-                <span>Back to Bot List</span>
-            </button>
-            <h2 className="text-3xl font-bold text-black mb-1">Manage Knowledge for: <span className="text-amber-700">{bot.name}</span></h2>
-            <p className="text-lg text-stone-700 mt-2 mb-8">Upload PDF and Word files to feed data to this bot.</p>
-
-            {/* File Upload UI */}
-             <div className="space-y-8 max-w-2xl mx-auto">
-                <div className="text-center p-10 border-2 border-dashed border-amber-600/30 bg-black/5 rounded-2xl">
-                    <label htmlFor="file-upload" className="inline-flex items-center justify-center gap-4 px-8 py-4 text-xl font-bold rounded-full transition-all duration-300 transform hover:scale-105 bg-wavy-gold-button text-black shadow-lg cursor-pointer">
-                        <UploadIcon className="h-8 w-8" /> <span>Choose Files</span>
-                    </label>
-                    <p className="text-sm text-stone-600 mt-3">(PDF and DOCX files are supported)</p>
-                    <input id="file-upload" type="file" multiple className="hidden" onChange={(e) => handleFileSelection(e.target.files)} accept=".pdf,.docx" disabled={parsingFiles.length > 0 || isUploading} />
-                </div>
-
-                {parsingFiles.length > 0 && <div className="text-center text-stone-700 animate-pulse">Parsing: {parsingFiles.join(', ')}...</div>}
-
-                {processedFiles.length > 0 && (
-                    <div className="bg-black/5 p-4 rounded-lg border border-amber-600/20">
-                        <h3 className="flex items-center gap-2 text-lg font-semibold mb-3 text-amber-900"><DocumentTextIcon /><span>Processed Files</span></h3>
-                        <div className="space-y-2">
-                            {processedFiles.map((file, index) => (
-                                <div key={index} className="flex items-center justify-between bg-black/5 p-2 rounded-md text-stone-800 border border-amber-600/10">
-                                    <p className="truncate pr-2 font-mono" title={file.name}>{file.name}</p>
-                                    <button onClick={() => handleRemoveFile(file.name)} className="p-1 text-red-700 hover:bg-red-300/50 rounded-full" aria-label={`Remove ${file.name}`}><TrashIcon className="h-4 w-4" /></button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                
-                <div className="text-center pt-4 border-t border-amber-600/20 mt-8">
-                    <button onClick={handleUpdateKnowledge} className="flex items-center justify-center gap-3 w-full sm:w-auto px-10 py-4 text-xl font-bold rounded-full transition-all bg-wavy-gold-button text-black shadow-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled={parsingFiles.length > 0 || processedFiles.length === 0 || isUploading}>
-                        {isUploading ? <SpinnerIcon className="h-8 w-8" /> : <CheckCircleIcon className="h-8 w-8" />}
-                        <span>{isUploading ? 'Saving...' : 'Save Knowledge Base'}</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const AdminPage: React.FC = () => {
-    const [view, setView] = useState<'list' | 'knowledge'>('list');
-    const [bots, setBots] = useState<Omit<Bot, 'knowledge'>[]>([]);
-    const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [isBackingUp, setIsBackingUp] = useState(false);
-    const [downloadingBotId, setDownloadingBotId] = useState<string | null>(null);
-    
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [isEmbedModalOpen, setIsEmbedModalOpen] = useState(false);
-    
-    const fetchBotsList = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const botList = await getBots();
-            setBots(botList);
-        } catch (err) {
-            setError('Failed to load the bot list. Make sure the backend server is running.');
-            console.error(err);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (view === 'list') {
-             fetchBotsList();
-        }
-    }, [view, fetchBotsList]);
-    
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImagePreview(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-    
-    const handleCloseCreateModal = () => {
-        setIsCreateModalOpen(false);
-        setImagePreview(null);
-    };
-
-    const handleCreateBot = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget);
-        const name = formData.get('botName') as string;
-        const welcome_message = formData.get('welcomeMessage') as string;
-        const initialKnowledgeText = formData.get('initialKnowledge') as string;
-        const image_base64 = imagePreview;
-        const wavy_color = formData.get('wavyColor') as string;
-
-        if (!name || !welcome_message) {
-            alert('Please fill in the bot name and welcome message.');
-            return;
-        }
-
-        let initialKnowledge: Knowledge | undefined = undefined;
-        if (initialKnowledgeText && initialKnowledgeText.trim()) {
-            const texts = initialKnowledgeText.split(/\n\s*\n+/).map(t => t.trim()).filter(Boolean);
-            if (texts.length > 0) {
-                 initialKnowledge = { texts, files: [] };
-            }
-        }
-        
-        try {
-            await createBot({ name, welcome_message, knowledge: initialKnowledge, image_base64, wavy_color });
-            handleCloseCreateModal();
-            fetchBotsList();
-        } catch (err) {
-            alert(`Failed to create bot: ${(err as Error).message}`);
-        }
-    };
-
-    const handleDeleteBot = async (botId: string) => {
-        if (window.confirm("Are you sure you want to delete this bot? This action cannot be undone.")) {
-            try {
-                await deleteBot(botId);
-                fetchBotsList();
-            } catch (err) {
-                alert(`Failed to delete bot: ${(err as Error).message}`);
-            }
-        }
-    };
-    
-    const handleManageKnowledge = (bot: Omit<Bot, 'knowledge'>) => {
-        setSelectedBot(bot as Bot);
-        setView('knowledge');
-    };
-
-    const handleShowEmbed = (bot: Omit<Bot, 'knowledge'>) => {
-        setSelectedBot(bot as Bot);
-        setIsEmbedModalOpen(true);
-    };
-
-    const handleBackup = async () => {
-        if (isBackingUp) return;
-        setIsBackingUp(true);
-        try {
-            await backupDatabase();
-        } catch (err) {
-            alert(`Failed to create backup: ${(err as Error).message}`);
-        } finally {
-            setIsBackingUp(false);
-        }
-    };
-
-    const handleDownloadBot = async (botId: string) => {
-        setDownloadingBotId(botId);
-        try {
-            const bot = await getBot(botId);
-            if (!bot) throw new Error("Bot not found");
-
             const zip = new JSZip();
 
-            // --- Helper to fetch file content ---
-            const fetchAsText = (path: string) => fetch(path).then(res => {
-                if (!res.ok) throw new Error(`Failed to fetch ${path}: ${res.statusText}`);
-                return res.text();
-            });
+            // 1. Create README.md
+            const readmeContent = `# Standalone Chatbot Setup
 
-            // --- Define file templates for the standalone bot ---
-            const readmeContent = `# Standalone AI Chatbot
+Thank you for downloading your chatbot from Lord of the Chatbot! To get your chatbot running, you need to add your Google AI API key.
 
-This folder contains your generated standalone AI chatbot, "${bot.name}", powered by Google Gemini.
+## Instructions
 
-## 🚀 Quick Start
-
-1.  **Add your API Key:**
-    *   Open the \`config.js\` file in a text editor.
-    *   Paste your Google AI API Key into the \`API_KEY\` constant.
-    *   You can get a key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-    *   **IMPORTANT:** Without a valid API key, the chatbot will not work.
-
-2.  **Run Locally:**
-    *   This project uses modern JavaScript modules (ESM), so you need a simple local web server to run it. You cannot just open \`index.html\` from the filesystem.
-    *   If you have Python 3, navigate to this folder in your terminal and run: \`python -m http.server\`
-    *   Then, open your browser and go to \`http://localhost:8000\`.
-
-3.  **Deploy:**
-    *   To deploy this chatbot, simply upload all the files and folders from this zip to any static web hosting service (like Vercel, Netlify, GitHub Pages, etc.).
-
-## ⚙️ Configuration
-
-All of your bot's settings (name, welcome message, knowledge base, colors, etc.) are stored in \`bot.json\`. You can edit this file directly to make changes.`;
-            
-            const configJsContent = `// IMPORTANT: Paste your Google AI API Key here
-// You can get one from https://aistudio.google.com/app/apikey
-export const API_KEY = "PASTE_YOUR_GOOGLE_AI_API_KEY_HERE";
+1.  **Get your API Key**: If you don't have one, get your key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+2.  **Edit \`gemini-service.js\`**: Open the \`gemini-service.js\` file in this package.
+3.  **Find the API Key placeholder**: Look for the line: \`const apiKey = 'YOUR_API_KEY_HERE';\`
+4.  **Add your key**: Replace \`'YOUR_API_KEY_HERE'\` with your actual Google AI API key.
+5.  **Save the file**.
+6.  **Upload to your server**: Upload all files to your web server and open \`index.html\`.
 `;
+            zip.file("README.md", readmeContent);
 
-            const standaloneIndexTsx = `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import BotClient from './BotClient';
+            // 2. Create index.html
+            const indexHtmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${bot.name}</title>
+    <style> body { margin: 0; background-color: #f0f0f0; } </style>
+</head>
+<body>
+    <p>Loading Chatbot...</p>
+    <script src="index.js?botId=${bot.id}" defer></script>
+</body>
+</html>`;
+            zip.file("index.html", indexHtmlContent);
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
+            // 3. Create index.js (This would be your main application bundle)
+            // For this example, we'll assume the main `index.js` is what's loaded.
+            // We need to fetch the content of our running `index.js`.
+            const indexJsResponse = await fetch('/index.js');
+            const indexJsContent = await indexJsResponse.text();
+            zip.file("index.js", indexJsContent);
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <BotClient />
-  </React.StrictMode>
-);`;
-            
-            // Fetch and modify files
-            const originalIndexHtml = await fetchAsText('./index.html');
-            const standaloneIndexHtml = originalIndexHtml.replace(/<title>.*<\/title>/, `<title>${bot.name}</title>`);
-            
-            const originalBotClient = await fetchAsText('./BotClient.tsx');
-            const standaloneBotClient = originalBotClient
-                .replace(`import { getBot } from './services/databaseService';`, "")
-                .replace(/interface BotClientProps[^}]+}/s, "")
-                .replace(`const BotClient: React.FC<BotClientProps> = ({ botId }) => {`, `const BotClient: React.FC = () => {`)
-                .replace(/useEffect\(\s*()?\s*=>\s*{[^}]*fetchBotData\(\);[^}]*},\s*\[botId\]\s*\);/s, `useEffect(() => {
-        const fetchBotData = async () => {
-            setView('loading');
-            try {
-                const response = await fetch('./bot.json');
-                if (!response.ok) throw new Error('Could not load bot.json. Make sure the file is in the same directory.');
-                const fetchedBot = await response.json();
-                setBot(fetchedBot);
-                setView('bot');
-            } catch (err: any) {
-                console.error("Failed to fetch bot data:", err);
-                setError("Could not load bot data. Please check bot.json and ensure the server is running.");
-                setView('error');
-            }
-        };
+            // 4. Create a custom gemini-service.js with a placeholder
+            const geminiServiceResponse = await fetch('/services/geminiService.ts');
+            let geminiServiceContent = await geminiServiceResponse.text();
 
-        fetchBotData();
-    }, []);`);
+            // Replace environment variable logic with a simple placeholder constant
+            geminiServiceContent = geminiServiceContent.replace(
+                /let ai: GoogleGenAI \| null = null;.*?return ai;/s,
+`const apiKey = 'YOUR_API_KEY_HERE';
+let ai: GoogleGenAI | null = null;
 
-            const originalGeminiService = await fetchAsText('./services/geminiService.ts');
-            const standaloneGeminiService = originalGeminiService
-                .replace(`import { GoogleGenAI, Type } from "@google/genai";`, `import { GoogleGenAI, Type } from "@google/genai";\nimport { API_KEY } from '../config';`)
-                .replace(/const getAiClient = \(\): GoogleGenAI => {[^}]+};/s, `const getAiClient = (): GoogleGenAI => {
-    if (ai) {
-        return ai;
+const getAiClient = (): GoogleGenAI => {
+    if (ai) return ai;
+    if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
+        throw new Error("API Key not found. Please add your Google AI API Key to gemini-service.js.");
     }
-
-    if (!API_KEY || API_KEY.includes("PASTE_YOUR")) {
-         const errorMsg = "Google AI API Key not found. Please add it to config.js.";
-         console.error(errorMsg);
-         throw new Error(errorMsg);
-    }
-    ai = new GoogleGenAI({ apiKey: API_KEY });
+    ai = new GoogleGenAI({ apiKey });
     return ai;
-};`);
-                
-            // List of static files to include
-            const filesToZip = {
-                'bot.json': JSON.stringify(bot, null, 2),
-                'config.js': configJsContent,
-                'README.md': readmeContent,
-                'index.html': standaloneIndexHtml,
-                'index.tsx': standaloneIndexTsx,
-                'BotClient.tsx': standaloneBotClient,
-                'metadata.json': fetchAsText('./metadata.json'),
-                'types.ts': fetchAsText('./types.ts'),
-                'VoiceExperience.tsx': fetchAsText('./VoiceExperience.tsx'),
-                'hooks/useVoiceAssistant.ts': fetchAsText('./hooks/useVoiceAssistant.ts'),
-                'services/geminiService.ts': standaloneGeminiService,
-                'components/CallControlButton.tsx': fetchAsText('./components/CallControlButton.tsx'),
-                'components/ChatInput.tsx': fetchAsText('./components/ChatInput.tsx'),
-                'components/ChatMessage.tsx': fetchAsText('./components/ChatMessage.tsx'),
-                'components/Icons.tsx': fetchAsText('./components/Icons.tsx'),
-                'components/StatusIndicator.tsx': fetchAsText('./components/StatusIndicator.tsx'),
-            };
+};`
+            );
+            // Convert TS to JS (simple regex replacements for this case)
+            geminiServiceContent = geminiServiceContent
+                .replace(/import .*? from '.*?';/g, '')
+                .replace(/export const/g, 'const')
+                .replace(/: [A-Z][a-zA-Z]+/g, ''); // Remove type annotations
 
-            for (const [path, contentPromise] of Object.entries(filesToZip)) {
-                const content = await contentPromise;
-                zip.file(path, content);
-            }
+            zip.file("gemini-service.js", geminiServiceContent);
+            
+            // 5. Package the bot data itself
+            zip.file(`bot_data.json`, JSON.stringify(bot, null, 2));
 
+
+            // Generate and download zip
             const blob = await zip.generateAsync({ type: 'blob' });
-            saveAs(blob, `${bot.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.zip`);
+            saveAs(blob, `${bot.name.replace(/\s+/g, '_')}_standalone.zip`);
 
-        } catch (error) {
-            console.error("Failed to download bot:", error);
-            alert(`Could not download bot. See console for details: ${(error as Error).message}`);
+        } catch (err) {
+            console.error("Download failed:", err);
+            alert("Failed to package the bot for download.");
         } finally {
-            setDownloadingBotId(null);
+            setIsDownloading(false);
         }
     };
 
 
-    if (isLoading && view === 'list') {
-        return <div className="flex items-center justify-center min-h-screen bg-stone-50"><SpinnerIcon className="w-16 h-16 text-amber-700"/></div>;
-    }
-
-    if (error) {
-        return <div className="text-center p-8 text-red-600 bg-red-100 min-h-screen">{error}</div>;
-    }
-    
-    if (view === 'knowledge' && selectedBot) {
-        return (
-             <div className="p-4 sm:p-8 my-4 bg-stone-50 min-h-screen">
-                <KnowledgeManager bot={selectedBot} onBack={() => { setView('list'); setSelectedBot(null); }} />
-             </div>
-        );
-    }
-
     return (
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 my-4 bg-stone-50 min-h-screen">
-            <header className="flex flex-col sm:flex-row justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-4xl font-bold text-black font-cinzel">Lord of the Chatbot</h1>
-                    <p className="text-lg text-stone-700 mt-2">
-                        Create and manage your AI voice assistants.
-                    </p>
-                </div>
-                <div className="flex items-center gap-4 mt-4 sm:mt-0">
-                    <button
-                        onClick={handleBackup}
-                        disabled={isBackingUp}
-                        className="flex items-center justify-center gap-2 px-4 py-3 text-lg font-bold rounded-full transition-all transform hover:scale-105 bg-stone-100 text-amber-800 border-2 border-amber-600 shadow-md disabled:opacity-50 disabled:cursor-wait"
-                        title="Download a backup of the database"
-                    >
-                        {isBackingUp ? <SpinnerIcon className="w-5 h-5" /> : <DownloadIcon className="w-5 h-5"/>}
-                        <span className="hidden sm:inline">{isBackingUp ? "Working..." : "Backup"}</span>
-                    </button>
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="flex items-center justify-center gap-2 px-6 py-3 text-lg font-bold rounded-full transition-all transform hover:scale-105 bg-wavy-gold-button text-black shadow-lg"
-                    >
-                        <PlusIcon />
-                        <span>New Bot</span>
+        <div className="space-y-8">
+            <div>
+                <h3 className="text-xl font-bold font-cinzel text-amber-900 mb-2">Embed on a Website</h3>
+                <p className="text-stone-600 mb-4">Copy and paste this snippet into your website's HTML before the closing <code>&lt;/body&gt;</code> tag. The bot will appear as a floating button.</p>
+                <div className="bg-stone-800 rounded-lg p-4 flex items-center justify-between text-white">
+                    <pre className="font-mono text-sm overflow-x-auto"><code>{embedCode}</code></pre>
+                    <button onClick={handleCopy} className="p-2 rounded-lg bg-stone-600 hover:bg-stone-500 transition-colors">
+                        {copied ? <CheckIcon className="w-5 h-5 text-green-400"/> : <ClipboardIcon className="w-5 h-5"/>}
                     </button>
                 </div>
-            </header>
-            
-            <div className="mb-8">
-                <ApiKeyManager />
             </div>
-
-            <div className="bg-white shadow-lg rounded-2xl overflow-hidden ring-1 ring-amber-200">
-                <div className="overflow-x-auto">
-                    <div className="min-w-[700px]">
-                        <div className="grid grid-cols-12 text-sm font-bold text-amber-900 bg-amber-50 p-4 border-b border-amber-200 uppercase tracking-wider">
-                            <div className="col-span-3">Bot Name</div>
-                            <div className="col-span-2">Admin Pass</div>
-                            <div className="col-span-3">Last Updated</div>
-                            <div className="col-span-4 text-center">Actions</div>
-                        </div>
-                        <div className="divide-y divide-amber-100 max-h-[60vh] overflow-y-auto wavy-gold-scrollbar pr-2">
-                            {bots.length === 0 ? (
-                                <div className="text-center p-8">
-                                    <PlatformLogoIcon className="h-24 w-24 mx-auto mb-4 opacity-70" />
-                                    <h3 className="text-2xl font-bold text-stone-800 font-cinzel">No Assistants Forged Yet</h3>
-                                    <p className="mt-2 mb-6 text-stone-600 max-w-md mx-auto">It looks like your forge is quiet. It's time to create your first intelligent assistant!</p>
-                                    <button
-                                        onClick={() => setIsCreateModalOpen(true)}
-                                        className="flex items-center justify-center gap-2 px-6 py-3 mx-auto text-lg font-bold rounded-full transition-all transform hover:scale-105 bg-wavy-gold-button text-black shadow-lg"
-                                    >
-                                        <PlusIcon />
-                                        <span>Forge a New Bot</span>
-                                    </button>
-                                </div>
-                            ) : (
-                                (bots as Bot[]).map(bot => (
-                                    <div key={bot.id} className="grid grid-cols-12 items-center p-4 hover:bg-amber-50/50 transition-colors">
-                                        <p className="col-span-3 font-semibold text-stone-800 text-lg truncate pr-2" title={bot.name}>{bot.name}</p>
-                                        <p className="col-span-2 font-mono text-sm text-blue-700 bg-blue-100 px-2 py-1 rounded-md inline-block">{bot.admin_pass}</p>
-                                        <p className="col-span-3 text-sm text-stone-600">{new Date(bot.updated_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                                        <div className="col-span-4 flex justify-center items-center gap-1 sm:gap-2">
-                                            <button onClick={() => handleManageKnowledge(bot)} className="px-3 py-1.5 text-xs sm:text-sm rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 transition">Manage Knowledge</button>
-                                            <button onClick={() => handleShowEmbed(bot)} className="p-2 rounded-full hover:bg-blue-100 text-blue-700 transition" aria-label="Embed Code"><CodeIcon className="w-5 h-5"/></button>
-                                            <button onClick={() => handleDownloadBot(bot.id)} disabled={downloadingBotId === bot.id} className="p-2 rounded-full hover:bg-green-100 text-green-700 transition disabled:opacity-50 disabled:cursor-wait" aria-label="Download Bot">
-                                                {downloadingBotId === bot.id ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : <DownloadIcon className="w-5 h-5"/>}
-                                            </button>
-                                            <button onClick={() => handleDeleteBot(bot.id)} className="p-2 rounded-full hover:bg-red-100 text-red-700 transition" aria-label="Delete Bot"><TrashIcon className="w-5 h-5"/></button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
+             <div>
+                <h3 className="text-xl font-bold font-cinzel text-amber-900 mb-2">Download Standalone Bot</h3>
+                <p className="text-stone-600 mb-4">
+                    Download a ZIP file containing all necessary files to run the bot on your own server.
+                    After downloading, you **must** edit the <code>gemini-service.js</code> file to add your Google AI API key.
+                    Instructions are included in the <code>README.md</code> file inside the ZIP.
+                </p>
+                <button
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    className="w-full px-6 py-3 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 transition-colors flex items-center justify-center gap-3 disabled:bg-stone-400"
+                >
+                    {isDownloading ? <SpinnerIcon className="w-6 h-6"/> : <DownloadIcon className="w-6 h-6"/>}
+                    <span>{isDownloading ? 'Packaging Bot...' : 'Download ZIP'}</span>
+                </button>
             </div>
-            
-            {isCreateModalOpen && (
-                <Modal onClose={handleCloseCreateModal} title="Create New Bot">
-                    <form onSubmit={handleCreateBot} className="space-y-6">
-                        <div>
-                            <label htmlFor="botName" className="block text-lg font-medium text-stone-700 mb-2">Bot Name</label>
-                            <input type="text" name="botName" id="botName" required className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"/>
-                        </div>
-                         <div>
-                            <label htmlFor="botImage" className="block text-lg font-medium text-stone-700 mb-2">Bot Image (for Icon & Welcome)</label>
-                            <div className="mt-2 flex items-center gap-4">
-                                {imagePreview ? (
-                                    <img src={imagePreview} alt="Bot preview" className="w-16 h-16 rounded-full object-cover border-2 border-amber-300" />
-                                ) : (
-                                    <div className="w-16 h-16 rounded-full bg-stone-200 flex items-center justify-center text-stone-500">
-                                        <UserIcon className="w-8 h-8"/>
-                                    </div>
-                                )}
-                                <input type="file" name="botImage" id="botImage" accept="image/png, image/jpeg, image/gif" onChange={handleImageChange} className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"/>
-                            </div>
-                        </div>
-                        <div>
-                            <label htmlFor="wavyColor" className="block text-lg font-medium text-stone-700 mb-2">Bot Color Theme</label>
-                            <select name="wavyColor" id="wavyColor" className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors">
-                                {colorOptions.map(opt => (
-                                    <option key={opt.name} value={opt.value}>{opt.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label htmlFor="welcomeMessage" className="block text-lg font-medium text-stone-700 mb-2">Welcome Message</label>
-                            <textarea name="welcomeMessage" id="welcomeMessage" rows={3} required className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"></textarea>
-                        </div>
-                        <div>
-                            <label htmlFor="initialKnowledge" className="block text-lg font-medium text-stone-700 mb-2">Initial Knowledge Base (Optional)</label>
-                             <textarea name="initialKnowledge" id="initialKnowledge" rows={5} placeholder="Paste text here. Separate paragraphs with a blank line..." className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"></textarea>
-                        </div>
-                        <div className="text-center pt-4">
-                            <button type="submit" className="px-12 py-4 bg-wavy-gold-button text-black text-xl font-bold rounded-full hover:shadow-lg transition-shadow shadow-md transform hover:scale-105">
-                                Create Bot
-                            </button>
-                        </div>
-                    </form>
-                </Modal>
-            )}
-
-            {isEmbedModalOpen && selectedBot && (
-                <EmbedCodeModal botId={selectedBot.id} onClose={() => setIsEmbedModalOpen(false)} />
-            )}
         </div>
     );
 };
+
 
 export default AdminPage;
